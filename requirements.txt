@@ -1,0 +1,6 @@
+uvloop
+sqlalchemy
+jinja2
+
+watchdog
+psutil

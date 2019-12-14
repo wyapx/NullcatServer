@@ -12,7 +12,7 @@ cache_path = conf.get("template", "cache_path")
 
 loader = FileSystemLoader(template_path)
 
-if conf.getboolean("template", "use_fs_cache"):
+if conf.get("template", "use_fs_cache"):
     if not os.path.exists(cache_path):
         os.mkdir(cache_path)
     cache = FileSystemBytecodeCache(os.path.join(work_directory, cache_path), "%s.cache")

@@ -5,7 +5,7 @@ import logging
 from .config import conf
 from .const_var import work_directory
 
-level = conf.getint("logger", "level")
+level = conf.get("logger", "level")
 log_format = conf.get("logger", "formatter").replace("$", "%")
 time_format = conf.get("logger", "time_format").replace("$", "%")
 save_path = conf.get("logger", "save_path")
@@ -20,7 +20,7 @@ class Logger:
         console.setFormatter(formatter)
         console.setLevel(level)
         self.logger.addHandler(console)
-        if conf.getboolean("logger", "is_save"):
+        if conf.get("logger", "save_log"):
             if not os.path.exists(save_path):
                 os.mkdir(save_path, 755)
             logName = "server_%s.log" % time.strftime("%y%m%d")

@@ -12,8 +12,8 @@ logger = main_logger.get_logger()
 
 if __name__ == "__main__":
     host = conf.get("server", "host")
-    port = conf.getint("server", "port")
-    https = conf.getboolean("https", "use_https")
+    port = conf.get("server", "port")
+    https = conf.get("https", "is_enable")
     if https:
         logger.info("HTTPS Enabled")
     else:

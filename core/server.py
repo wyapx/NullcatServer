@@ -40,11 +40,11 @@ def get_ssl_context(alpn: list):
     import ssl
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.options |= (ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1)
-    support_ciphers = conf.get("https", "https_ciphers")
+    support_ciphers = conf.get("https", "support_ciphers")
     context.set_ciphers(support_ciphers)
     context.set_alpn_protocols([*alpn])
-    context.load_cert_chain(conf.get("https", "cert_file"),
-                            conf.get("https", "key_file"))
+    context.load_cert_chain(conf.get("https", "cert_path"),
+                            conf.get("https", "key_path"))
     return context
 
 
@@ -54,7 +54,7 @@ class FullAsyncServer(object):
     def __init__(self, host="", port=80, https=False, loop=get_best_loop()):
         self.host = host
         self.port = port
-        self.timeout = conf.getint("server", "request_timeout")
+        self.timeout = conf.get("server", "request_timeout")
         if https:
             self.ssl = get_ssl_context(["http/1.1"])
         else:

@@ -10,7 +10,7 @@ except ImportError:
     exit(1)
 
 process_pid = None
-IGNORE_FILE = ("monitor.py")
+IGNORE_FILE = ("tools.py")
 ACTIVE_END = (".py", ".ini")
 EXECUTE_PATH = ["py", "python3"]
 NORMAL_EXIT = 0

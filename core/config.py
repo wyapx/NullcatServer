@@ -1,60 +1,72 @@
 import os
-from configparser import ConfigParser
+import json
 from .const_var import work_directory
 
-server_conf = [
-    "server",
-    ["host", "0.0.0.0"],
-    ["port", "80"],
-    ["request_timeout", "30"]
-]
 
-https_conf = [
-    "https",
-    ["use_https", "False"],
-    ["https_ciphers", "ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128"],
-    ["cert_file", ""],
-    ["key_file", ""],
-]
+base_config = {
+    "server": {
+        "host": "",
+        "port": 8080,
+        "request_timeout": 30
+     },
+    "https": {
+        "is_enable": False,
+        "support_ciphers": "ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128",
+        "cert_path": "",
+        "key_path": ""
+    },
+    "database": {
+        "is_sqlite": True,
+        "database_url": "sqlite:///:memory:",
+        "use_memcached": False,
+        "memcached_url": "",
+        "debug": False
+    },
+    "logger": {
+        "level": 20,
+        "formatter": "$(asctime)s [$(levelname)s]:$(message)s",
+        "time_format": "$Y/$m/$d $H:$M:$S",
+        "save_log": True,
+        "save_path": "log/"
+    },
+    "template": {
+        "template_path": "template/",
+        "use_fs_cache": True,
+        "cache_path": "__pycache__/"
+    }
+}
 
-db_conf = [
-    "database",
-    ["use_sqlite", "True"],
-    ["database_url", "sqlite:///database.db"],
-    ["use_memcached", "False"],
-    ["memcached_url", "127.0.0.1:11211"],
-    ["debug", "False"]
-]
+class JsonConfigParser:
+    def __init__(self, config: dict):
+        self.config = config
+    
+    def update(self, path):
+        if not os.path.exists(path):
+            raise FileNotFoundError
+        with open(path, "r") as f:
+            data = f.read()
+        try:
+            self.config.update(
+                json.loads(data)
+            )
+        except json.decoder.JSONDecodeError as e:
+            print("Error: ConfigFile is not load")
+            print("reason:", e)
+            
+    def get(self, segment, block):
+        if segment in self.config:
+            result = self.config[segment]
+            if block in result:
+                return result[block]
+            raise KeyError(f"block {block} is not exist")
+        raise KeyError(f"segment {segment} is not exist")
 
-log_conf = [
-    "logger",
-    ["level", "20"],
-    ["formatter", "$(asctime)s ($(processName)s/$(threadName)s)[$(levelname)s]:$(message)s"],
-    ["time_format", "$Y/$m/$d $H:$M:$S"],
-    ["is_save", "True"],
-    ["save_path", "log/"]
-]
 
-template_conf = [
-    "template",
-    ["template_path", "template/"],
-    ["use_fs_cache", "True"],
-    ["cache_path", "__pycache__/"],
-]
-
-all_config = [server_conf, https_conf, db_conf, log_conf, template_conf]
-
-conf = ConfigParser()
-conf_file_path = os.path.join(work_directory, "server.ini")
-conf.read(conf_file_path, encoding="utf-8")
-
-if not os.path.exists(conf_file_path):
-    for a in all_config:
-        config_name = a[0]
-        conf.add_section(config_name)
-        for k, v in a[1:]:
-            conf.set(config_name, k, v)
-    conf.write(open(conf_file_path, "w"))
-
-# TODO
-# 将configparser模块更换为dict
+conf = JsonConfigParser(base_config)
+conf_path = os.path.join(work_directory, "config.json")
+if not os.path.exists(conf_path):
+    with open(conf_path, "w") as f:
+        f.write(
+           json.dumps(base_config)
+        )
+conf.update(conf_path)

@@ -178,12 +178,19 @@ class Memcached:
 
     def _cmd_sender(self, cmd: (bytearray, bytes), value=None):
         if not self._is_connected():
-            self._open_connection()
-        self._sock.send(cmd)
-        self._sock.send(b"\r\n")
+            if not self._open_connection():
+                return False
+        try:
+            self._sock.send(cmd)
+            self._sock.send(b"\r\n")
+        except ConnectionError as e:
+            if self.debug:
+                print(e)
+            return False
         if value:
             self._sock.send(value)
             self._sock.send(b"\r\n")
+        return True
 
     def _store_cmd(self, cmd_type: bytes, key: (str, bytes), value: bytes, expire: int, flags=0):
         if not self.status:
@@ -196,7 +203,9 @@ class Memcached:
             data += key
         data.append(32)  # space key
         data += f"{flags} {expire} {len(value)}".encode()
-        self._cmd_sender(data, value)
+        if not self._cmd_sender(data, value):
+            self.status = False
+            return -2
         result = self._sock_readline()
         if self.debug:
             print(result)
@@ -213,7 +222,9 @@ class Memcached:
     def _stats_cmd(self, typ=""):
         if not self.status:
             return -2
-        self._cmd_sender(f"stats {typ}".encode())
+        if not self._cmd_sender(f"stats {typ}".encode()):
+            self.state = False
+            return -2
         result = []
         while True:
             data = self._sock_readline()
@@ -263,7 +274,9 @@ class Memcached:
             data = b"delete " + key
         else:
             data = b"delete " + key.encode()
-        self._cmd_sender(data)
+        if not self._cmd_sender(data):
+            self.state = False
+            return -2
         result = self._sock_readline()
         if result == b"DELETED\r\n":
             return True
@@ -279,7 +292,9 @@ class Memcached:
         for i in key:
             cmd.append(32)  # space key
             cmd += i.encode()
-        self._cmd_sender(cmd)
+        if not self._cmd_sender(cmd):
+            self.state = False
+            return -2
         result = {}
         for i in key:
             result[i] = None
@@ -297,7 +312,9 @@ class Memcached:
     def get(self, key: str):
         if not self.status:
             return -2
-        self._cmd_sender(f"get {key}".encode())
+        if not self._cmd_sender(f"get {key}".encode()):
+            self.state = False
+            return -2
         while True:
             buf = self._sock_readline()
             if self.debug:
@@ -316,7 +333,9 @@ class Memcached:
         if not self.status:
             return -2
         cmd = f"flush_all {time}"
-        self._cmd_sender(cmd)
+        if not self._cmd_sender(cmd):
+            self.state = False
+            return -2
         if self._sock_readline() == b"OK\r\n":
             return True
         return False

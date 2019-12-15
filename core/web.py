@@ -27,11 +27,12 @@ class BaseRequest(object):
 
     @property
     def GET(self) -> dict:
-        url = self.head.get("url")
+        url = self.path
+        print(url)
         try:
-            origin = url.split("?")[1]
+            origin = url.split("?", 1)[1]
         except IndexError:
-            return dict()
+            return {}
         try:
             block = origin.split("&")
         except IndexError:

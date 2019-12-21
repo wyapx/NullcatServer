@@ -5,11 +5,19 @@ from .const_var import work_directory
 
 base_config = {
     "server": {
-        "host": "",
-        "port": 8080,
-        "request_timeout": 30
+        "request_timeout": 30,
+        "daemon": True,
+        "handler": ["core.urls"]
      },
+    "http": {
+        "host": "",
+        "port": 80,
+        "is_enable": True,
+        "rewrite_only": False
+    },
     "https": {
+        "host": "",
+        "port": 443,
         "is_enable": False,
         "support_ciphers": "ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128",
         "cert_path": "",
@@ -17,7 +25,7 @@ base_config = {
     },
     "database": {
         "is_sqlite": True,
-        "database_url": "sqlite:///:memory:",
+        "database_url": "sqlite:///database.db",
         "use_memcached": False,
         "memcached_url": "",
         "debug": False
@@ -52,7 +60,8 @@ class JsonConfigParser:
         except json.decoder.JSONDecodeError as e:
             print("Error: ConfigFile is not load")
             print("reason:", e)
-            
+            exit(0)
+
     def get(self, segment, block):
         if segment in self.config:
             result = self.config[segment]
@@ -65,8 +74,9 @@ class JsonConfigParser:
 conf = JsonConfigParser(base_config)
 conf_path = os.path.join(work_directory, "config.json")
 if not os.path.exists(conf_path):
+    print(f"Warning: {conf_path} not found, regenerating...")
     with open(conf_path, "w") as f:
         f.write(
-           json.dumps(base_config)
+           json.dumps(base_config, indent=2)
         )
 conf.update(conf_path)

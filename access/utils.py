@@ -1,10 +1,15 @@
 import secrets
-from core.tables import Session, User
+from hashlib import sha3_512
+from .tables import Session, User
 from core.db import DBSession, mem_db
-from core.utils import encrypt_passwd
 
 
 database = DBSession()
+
+def encrypt_passwd(password): 
+    if isinstance(password, str): 
+        password = password.encode()
+    return sha3_512(password).hexdigest()
 
 def check_login_info(username, passwd) -> int:
     user = database.query(User.password).filter(User.name == username).one_or_none()

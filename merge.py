@@ -1,4 +1,4 @@
-from core.tables import Base
+from access.tables import Base
 from core.db import engine
 
 if __name__ == '__main__':

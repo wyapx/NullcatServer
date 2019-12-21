@@ -3,7 +3,6 @@ import socket
 import asyncio
 from .logger import main_logger
 from .web import BaseRequest, Http404, HttpServerError, BaseHandler
-from .urls import pattern
 from .config import conf
 from .utils import url_match
 
@@ -36,27 +35,27 @@ def get_best_loop(debug=False):
     return loop
 
 
-def get_ssl_context(alpn: list):
+def get_ssl_context(alpn: list, cert_path, key_path):
     import ssl
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.options |= (ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1)
     support_ciphers = conf.get("https", "support_ciphers")
     context.set_ciphers(support_ciphers)
     context.set_alpn_protocols([*alpn])
-    context.load_cert_chain(conf.get("https", "cert_path"),
-                            conf.get("https", "key_path"))
+    context.load_cert_chain(cert_path, key_path)
     return context
 
 
 class FullAsyncServer(object):
     log = main_logger.get_logger()
 
-    def __init__(self, host="", port=80, https=False, loop=get_best_loop()):
-        self.host = host
-        self.port = port
+    def __init__(self, handler, loop=get_best_loop()):
+        self.handler = handler
         self.timeout = conf.get("server", "request_timeout")
-        if https:
-            self.ssl = get_ssl_context(["http/1.1"])
+        if conf.get("https", "is_enable"):
+            self.ssl = get_ssl_context(["http/1.1"],
+                                       conf.get("https", "cert_path"),
+                                       conf.get("https", "key_path"))
         else:
             self.ssl = None
         self.loop = loop
@@ -85,9 +84,9 @@ class FullAsyncServer(object):
                 if length:
                     req.body = await reader.read(int(length))
                 start_time = self.millis()
-                match = url_match(req.path, pattern)
+                match = url_match(req.path, self.handler)
                 if match:
-                    req.head["rest_url"] = match[1].groups()
+                    req.re_args = match[1].groups()
                     try:
                         obj: BaseHandler = match[0](req, reader, writer)
                         res = await obj.run()
@@ -96,19 +95,19 @@ class FullAsyncServer(object):
                         res = HttpServerError()
                 else:
                     res = Http404()
-                if req.head.get("Connection", "close").lower() == b"keep-alive":
-                    state = "keep-alive"
-                else:
-                    state = "close"
                 res.add_header({"Server": "NullcatServer"})
                 if res.code != 101:
+                    if req.head.get("Connection", "close").lower() == b"keep-alive":
+                        state = "keep-alive"
+                    else:
+                        state = "close"
                     res.add_header({"Content-length": res.getLen(),
                                     "Connection": state})
-                code = await res.send(writer.write, writer.drain)
-                if code == 101:
+                    await res.send(writer.write, writer.drain)
+                else:
                     await obj.loop()
                     req.head["Connection"] = "close"
-                self.log.info(f"{req.method} {req.path}:{code} {ip}({self.millis() - start_time}ms)")
+                self.log.info(f"{req.method} {req.path}:{res.code} {ip}({self.millis() - start_time}ms)")
                 if req.head.get("Connection", "close") == "close":
                     break
             else:
@@ -116,18 +115,32 @@ class FullAsyncServer(object):
         self.log.debug(f"{ip}:{port} disconnect")
         writer.close()
 
+    def signal_handler(self, sig):
+        self.log.warning(f"Got signal {sig}, closing...")
+        self.loop.stop()
+        
     def run(self):
-        coro = asyncio.start_server(self.server, self.host, self.port, ssl=self.ssl)
-        server = self.loop.run_until_complete(coro)
-        self.log.info(f"Server start on {gethostip(self.host)}:{self.port}")
+        if sys.platform != "win32":
+            from signal import SIGTERM, SIGINT
+            for sig in (SIGTERM, SIGINT):
+                self.loop.add_signal_handler(sig, self.signal_handler, sig)
+        if conf.get("http", "is_enable"):
+            http = asyncio.start_server(self.server,
+                                        conf.get("http", "host"),
+                                        conf.get("http", "port"))
+            self.loop.run_until_complete(http)
+            self.log.info(f"HTTP is running at {conf.get('http', 'host')}:{conf.get('http', 'port')}")
+        if self.ssl:
+            https = asyncio.start_server(self.server,
+                                         conf.get("https", "host"),
+                                         conf.get("https", "port"),
+                                         ssl=self.ssl)
+            self.loop.run_until_complete(https)
+            self.log.info(f"HTTPS is running at {conf.get('https', 'host')}:{conf.get('https', 'port')}")
         self.log.info("Press Ctrl+C to stop server")
         try:
             self.loop.run_forever()
         except KeyboardInterrupt:
-            pass
+            self.loop.stop()
         self.log.warning("Server closed")
-        server.close()
 
-
-if __name__ == "__main__":
-    FullAsyncServer().run()

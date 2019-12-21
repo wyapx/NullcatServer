@@ -8,7 +8,6 @@ from time import time
 from io import BytesIO
 from .utils import timestamp_toCookie, File, ws_return_key
 from .db import DBSession, mem_db
-from .tables import Session
 from urllib.parse import unquote
 
 database = DBSession()
@@ -19,6 +18,7 @@ class BaseRequest(object):
         self.body = b""
         self.remote = ip
         self.head = {}
+        self.re_args = ()
         info, extra = origin.split(b"\r\n", 1)
         self.method, self.path, self.protocol = re.match(r"(\w{3,7}) (.*) HTTP/(\d\.\d)", info.decode()).groups()
         for kv in extra[:-4].split(b"\r\n"):
@@ -28,7 +28,6 @@ class BaseRequest(object):
     @property
     def GET(self) -> dict:
         url = self.path
-        print(url)
         try:
             origin = url.split("?", 1)[1]
         except IndexError:
@@ -124,7 +123,6 @@ class Response(object):
             sendObj(self.content.full_read())
         else:
             sendObj(self.content.encode())
-        return self.code
 
     @staticmethod
     async def conn_drain(drain) -> bool:
@@ -136,22 +134,20 @@ class Response(object):
 
 
 class BaseHandler:
-    auth = False
-
     def __init__(self, request: BaseRequest, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.request = request
         self.writer = writer
         self.reader = reader
 
-    async def auth_check(self) -> bool:
-        cookie = self.request.Cookie.get("session_id")
-        if cookie:
-            #result = database.query(Session).filter(Session.sessionid == cookie).one_or_none()
-            result = mem_db.get(cookie)
-            print(cookie, result)
-            if result:
-                return True
-        return False
+#    async def auth_check(self) -> bool:
+#        cookie = self.request.Cookie.get("session_id")
+#        if cookie:
+#            #result = database.query(Session).filter(Session.sessionid == cookie).one_or_none()
+#            result = mem_db.get(cookie)
+#            print(cookie, result)
+#            if result:
+#                return True
+#        return False
 
     async def run(self):
         pass
@@ -162,9 +158,9 @@ class BaseHandler:
 
 class WebHandler(BaseHandler):
     async def run(self) -> Response:
-        if self.auth:
-            if not await self.auth_check():
-                return Http403()
+#        if self.auth:
+#            if not await self.auth_check():
+#                return Http403()
         if self.request.method == "GET":
             res = await self.get()
         elif self.request.method == "POST":
@@ -186,9 +182,9 @@ class WsHandler(BaseHandler):
     keep_alive = True
 
     async def run(self) -> Response:
-        if self.auth:
-            if not self.auth_check():
-                return Http403()
+#        if self.auth:
+#            if not self.auth_check():
+#                return Http403()
         if self.request.head.get("Upgrade") != b"websocket":
             return Http405()
         key = self.request.head.get("Sec-WebSocket-Key")
@@ -330,7 +326,6 @@ class StreamResponse(Response):
                 break
             yield  # Fix "socket.send() raised exception." issue
             sendObj(i)
-        return self.code
 
 
 class JsonResponse(Response):
@@ -380,7 +375,6 @@ class HtmlResponse(Response):
                 sendObj(b"0")
                 sendObj(b"\r\n\r\n")
                 break
-        return self.code
 
 
 def Http204():

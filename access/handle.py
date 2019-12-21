@@ -1,7 +1,7 @@
 from time import time
 from core.web import WebHandler, Http400, Http301, HtmlResponse, JsonResponse
-from core.utils import render, encrypt_passwd
-from .utils import check_login_info, login, register
+from core.utils import render
+from .utils import check_login_info, login, register, encrypt_passwd
 
 class user_login(WebHandler):
     async def post(self):

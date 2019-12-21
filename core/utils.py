@@ -1,7 +1,7 @@
 import os
 import re
 import time
-from hashlib import sha3_512, sha1
+from hashlib import sha1
 from base64 import b64encode
 from .config import conf
 from .const_var import work_directory, ws_magic_string
@@ -70,17 +70,6 @@ class File(object):
                     yield data
                 else:
                     break
-
-
-def encrypt_passwd(password):
-    if isinstance(password, str):
-        password = password.encode()
-    return sha3_512(password).hexdigest()
-
-def unescape(content):
-    if type(content) == bytes:
-        return content.decode('unicode-escape')
-    return content.encode().decode('unicode-escape')
 
 def cookie_toTimestamp(cookieTime) -> int:
     return int(time.mktime(time.strptime(cookieTime, "%a, %d %b %Y %H:%M:%S GMT")))

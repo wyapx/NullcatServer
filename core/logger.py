@@ -16,10 +16,11 @@ class Logger:
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
         formatter = logging.Formatter(log_format, time_format)
-        console = logging.StreamHandler(sys.stdout)
-        console.setFormatter(formatter)
-        console.setLevel(level)
-        self.logger.addHandler(console)
+        if not conf.get("server", "daemon") or sys.platform == "win32":
+            console = logging.StreamHandler(sys.stdout)
+            console.setFormatter(formatter)
+            console.setLevel(level)
+            self.logger.addHandler(console)
         if conf.get("logger", "save_log"):
             if not os.path.exists(save_path):
                 os.mkdir(save_path, 755)

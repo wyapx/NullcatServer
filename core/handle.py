@@ -11,9 +11,9 @@ static_path = os.path.join(work_directory, "static/")
 class static(WebHandler):
     async def get(self):
         request = self.request
-        if request.head.get("rest_url")[0].find("..") != -1:
+        if request.re_args[0].find("..") != -1:
             return Http400()
-        path = os.path.join(static_path, request.head.get("rest_url")[0])
+        path = os.path.join(static_path, request.re_args[0])
         if os.path.exists(path):
             f = File(path)
             mtime = timestamp_toCookie(f.mtime()).encode()

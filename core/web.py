@@ -21,9 +21,9 @@ class BaseRequest(object):
         self.re_args = ()
         info, extra = origin.split(b"\r\n", 1)
         self.method, self.path, self.protocol = re.match(r"(\w{3,7}) (.*) HTTP/(\d\.\d)", info.decode()).groups()
-        for kv in extra[:-4].split(b"\r\n"):
-            k, v = kv.split(b": ", 1)
-            self.head[k.decode()] = v
+        for kv in extra[:-4].decode().split("\r\n"):
+            k, v = kv.split(": ", 1)
+            self.head[k] = v
 
     @property
     def GET(self) -> dict:
@@ -46,12 +46,12 @@ class BaseRequest(object):
     def POST(self) -> dict:
         origin = self.body
         try:
-            block = origin.split(b"&")
+            block = origin.split("&")
         except IndexError:
             block = origin
         data = dict()
         for i in block:
-            k, v = i.split(b"=", 1)
+            k, v = i.split("=", 1)
             data[k] = v
         return data
 
@@ -185,7 +185,7 @@ class WsHandler(BaseHandler):
 #        if self.auth:
 #            if not self.auth_check():
 #                return Http403()
-        if self.request.head.get("Upgrade") != b"websocket":
+        if self.request.head.get("Upgrade") != "websocket":
             return Http405()
         key = self.request.head.get("Sec-WebSocket-Key")
         if not key:

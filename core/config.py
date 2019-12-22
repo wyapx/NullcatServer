@@ -7,7 +7,7 @@ base_config = {
     "server": {
         "request_timeout": 30,
         "daemon": True,
-        "handler": ["core.urls"]
+        "handler": {"*": ["core.urls"]}
      },
     "http": {
         "host": "",

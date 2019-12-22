@@ -78,6 +78,8 @@ def timestamp_toCookie(Time=time.time()) -> str:
     return time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(Time))
 
 def url_match(url: str, kv: list) -> list or None:
+    if not kv:
+        return None
     realurl = url.split("?")[0]
     for i in kv:
         result = i[0].search(realurl)

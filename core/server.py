@@ -71,7 +71,7 @@ class FullAsyncServer(object):
             except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError):
                 break
             except OSError as e:
-                print(e.strerror)
+                print(e)
                 break
             if header:
                 try:
@@ -80,11 +80,12 @@ class FullAsyncServer(object):
                     self.log.warning("Request Unpack Error(from %s)" % ip)
                     self.log.warning(("Origin data: ", header))
                     break
+                pattern = self.handler.get(req.head.get("Host", "*"))
                 length = req.head.get("Content-Length")
                 if length:
                     req.body = await reader.read(int(length))
                 start_time = self.millis()
-                match = url_match(req.path, self.handler)
+                match = url_match(req.path, pattern)
                 if match:
                     req.re_args = match[1].groups()
                     try:
@@ -95,16 +96,17 @@ class FullAsyncServer(object):
                         res = HttpServerError()
                 else:
                     res = Http404()
-                res.add_header({"Server": "NullcatServer"})
                 if res.code != 101:
-                    if req.head.get("Connection", "close").lower() == b"keep-alive":
+                    if req.head.get("Connection", "close").lower() == "keep-alive":
                         state = "keep-alive"
                     else:
                         state = "close"
                     res.add_header({"Content-length": res.getLen(),
-                                    "Connection": state})
+                                    "Connection": state,
+                                    "Server": "NullcatServer"})
                     await res.send(writer.write, writer.drain)
                 else:
+                    await res.send(writer.write, writer.drain)
                     await obj.loop()
                     req.head["Connection"] = "close"
                 self.log.info(f"{req.method} {req.path}:{res.code} {ip}({self.millis() - start_time}ms)")

@@ -5,11 +5,14 @@ from core.server import FullAsyncServer
 
 logger = main_logger.get_logger()
 def add_handler():
-    result = []
-    for urls in conf.get("server", "handler"):
-        result.extend(
-            __import__(urls).urls.pattarn
-        )
+    result = {}
+    for k, v in conf.get("server", "handler").items():
+        urls = []
+        for path in v:
+            urls.extend(
+                __import__(path).urls.pattarn
+            )
+        result[k] = urls
     return result
 
 if __name__ == "__main__":

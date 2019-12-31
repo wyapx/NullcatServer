@@ -12,13 +12,17 @@ from urllib.parse import unquote
 
 database = DBSession()
 
+class BaseRequest:
+    pass
 
-class BaseRequest(object):
+class HTTPRequest(BaseRequest):
     def __init__(self, origin, ip="0.0.0.0"):
         self.body = b""
         self.remote = ip
         self.head = {}
         self.re_args = ()
+        self.GET_data = None
+        self.POST_data = None
         info, extra = origin.split(b"\r\n", 1)
         self.method, self.path, self.protocol = re.match(r"(\w{3,7}) (.*) HTTP/(\d\.\d)", info.decode()).groups()
         for kv in extra[:-4].decode().split("\r\n"):
@@ -27,33 +31,40 @@ class BaseRequest(object):
 
     @property
     def GET(self) -> dict:
-        url = self.path
-        try:
-            origin = url.split("?", 1)[1]
-        except IndexError:
+        if self.GET_data:
+            return self.GET_data
+        if self.path.find("?") == -1:
             return {}
+        data = self.path.split("?", 1)[1]
         try:
-            block = origin.split("&")
+            block = data.split("&")
         except IndexError:
-            block = origin
-        data = {}
-        for i in block:
-            k, v = i.split("=", 1)
-            data[k] = unquote(v)
-        return data
+            block = data
+        result = {}
+        try:
+            for i in block:
+                k, v = i.split("=", 1)
+                result[k] = unquote(v)
+            return result
+        except ValueError:
+            return {}
 
     @property
     def POST(self) -> dict:
-        origin = self.body
+        if not self.body:
+            return {}
         try:
-            block = origin.split("&")
+            block = self.body.split("&")
         except IndexError:
-            block = origin
-        data = dict()
-        for i in block:
-            k, v = i.split("=", 1)
-            data[k] = v
-        return data
+            block = self.body
+        result = {}
+        try:
+            for i in block:
+                k, v = i.split("=", 1)
+                data[k] = v
+            return data
+        except ValueError:
+            return {}
 
     @property
     def Cookie(self) -> dict:

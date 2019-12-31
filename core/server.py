@@ -2,7 +2,7 @@ import sys
 import socket
 import asyncio
 from .logger import main_logger
-from .web import BaseRequest, Http404, HttpServerError, BaseHandler
+from .web import HTTPRequest, Http404, HttpServerError, BaseHandler
 from .config import conf
 from .utils import url_match
 
@@ -49,7 +49,8 @@ def get_ssl_context(alpn: list, cert_path, key_path):
 class FullAsyncServer(object):
     log = main_logger.get_logger()
 
-    def __init__(self, handler, loop=get_best_loop()):
+    def __init__(self, handler, block=True, loop=get_best_loop()):
+        self.block = block
         self.handler = handler
         self.timeout = conf.get("server", "request_timeout")
         if conf.get("https", "is_enable"):
@@ -64,7 +65,7 @@ class FullAsyncServer(object):
         return int(self.loop.time() * 1000)
 
     async def server(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        ip, port = writer.get_extra_info("peername")
+        ip, port = writer.get_extra_info("peername")[0:2]
         while True:
             try:
                 header = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), self.timeout)
@@ -75,12 +76,12 @@ class FullAsyncServer(object):
                 break
             if header:
                 try:
-                    req = BaseRequest(header, ip)
+                    req = HTTPRequest(header, ip)
                 except (ValueError, AttributeError):
                     self.log.warning("Request Unpack Error(from %s)" % ip)
                     self.log.warning(("Origin data: ", header))
                     break
-                pattern = self.handler.get(req.head.get("Host", "*"))
+                pattern = self.handler.get(req.head.get("Host", "*"), self.handler.get("global"))
                 length = req.head.get("Content-Length")
                 if length:
                     req.body = await reader.read(int(length))
@@ -101,7 +102,8 @@ class FullAsyncServer(object):
                         state = "keep-alive"
                     else:
                         state = "close"
-                    res.add_header({"Content-length": res.getLen(),
+                    res.add_header({"Access-Control-Allow-Origin": "*",
+                                    "Content-length": res.getLen(),
                                     "Connection": state,
                                     "Server": "NullcatServer"})
                     await res.send(writer.write, writer.drain)
@@ -139,10 +141,11 @@ class FullAsyncServer(object):
                                          ssl=self.ssl)
             self.loop.run_until_complete(https)
             self.log.info(f"HTTPS is running at {conf.get('https', 'host')}:{conf.get('https', 'port')}")
-        self.log.info("Press Ctrl+C to stop server")
-        try:
-            self.loop.run_forever()
-        except KeyboardInterrupt:
-            self.loop.stop()
-        self.log.warning("Server closed")
+        if self.block:
+            self.log.info("Press Ctrl+C to stop server")
+            try:
+                self.loop.run_forever()
+            except KeyboardInterrupt:
+                self.loop.stop()
+            self.log.warning("Server closed")
 

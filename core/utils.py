@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import importlib
 from hashlib import sha1
 from base64 import b64encode
 from .config import conf
@@ -109,3 +110,18 @@ def ws_return_key(key):
 def path(p_url: str, target: object) -> tuple:
     com = re.compile(p_url)
     return com, target
+
+def get_handler(reload=False):
+    result = {}
+    for k, v in conf.get("server", "handler").items():
+        urls = []
+        for module_path in v:
+            if reload:
+                module = importlib.reload(importlib.import_module(module_path))
+            else:
+                module = importlib.import_module(module_path)
+            urls.extend(
+                module.pattern
+            )
+        result[k] = urls
+    return result

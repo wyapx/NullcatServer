@@ -5,8 +5,10 @@ __all__ = [
     "handle",
     "logger",
     "server",
-    "tables",
     "urls",
     "utils",
-    "web"
+    "web",
+    "memcache",
+    "mimetype",
+    "daemon"
 ]

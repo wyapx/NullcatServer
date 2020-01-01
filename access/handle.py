@@ -1,7 +1,8 @@
 from time import time
 from core.web import WebHandler, Http400, Http301, HtmlResponse, JsonResponse
 from core.utils import render
-from .utils import check_login_info, login, register, encrypt_passwd
+from .utils import check_login_info, login, register, encrypt_passwd, auth_require
+
 
 class user_login(WebHandler):
     async def post(self):
@@ -42,3 +43,8 @@ class user_register(WebHandler):
 
     async def get(self):
         return HtmlResponse(render("register.html"), self.request)
+
+class test(WebHandler):
+    @auth_require
+    async def get(self):
+        return JsonResponse({"status": 'OK'})

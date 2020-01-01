@@ -54,15 +54,15 @@ class HTTPRequest(BaseRequest):
         if not self.body:
             return {}
         try:
-            block = self.body.split("&")
+            block = self.body.split(b"&")
         except IndexError:
             block = self.body
         result = {}
         try:
             for i in block:
-                k, v = i.split("=", 1)
-                data[k] = v
-            return data
+                k, v = i.split(b"=", 1)
+                result[k] = v
+            return result
         except ValueError:
             return {}
 
@@ -71,7 +71,7 @@ class HTTPRequest(BaseRequest):
         cookie = self.head.get("Cookie")
         if not cookie:
             return {}
-        buf = cookie.decode().split("; ")
+        buf = cookie.split("; ")
         kv = {}
         for i in buf:
             k, v = i.split("=", 1)
@@ -169,9 +169,6 @@ class BaseHandler:
 
 class WebHandler(BaseHandler):
     async def run(self) -> Response:
-#        if self.auth:
-#            if not await self.auth_check():
-#                return Http403()
         if self.request.method == "GET":
             res = await self.get()
         elif self.request.method == "POST":
@@ -193,9 +190,6 @@ class WsHandler(BaseHandler):
     keep_alive = True
 
     async def run(self) -> Response:
-#        if self.auth:
-#            if not self.auth_check():
-#                return Http403()
         if self.request.head.get("Upgrade") != "websocket":
             return Http405()
         key = self.request.head.get("Sec-WebSocket-Key")

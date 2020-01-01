@@ -5,7 +5,7 @@ from .const_var import work_directory
 
 base_config = {
     "server": {
-        "request_timeout": 30,
+        "request_timeout": 10,
         "daemon": True,
         "handler": {"*": ["core.urls"]}
      },

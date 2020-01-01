@@ -10,7 +10,7 @@ except ImportError:
     exit(1)
 
 IGNORE_FILE = ("monitor.py")
-ACTIVE_END = (".py",)
+ACTIVE_END = (".py", ".py___jb_tmp___")
 EXECUTE_PATH = ["py", "python3"]
 
 

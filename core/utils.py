@@ -49,7 +49,7 @@ class File(object):
 
     def set_range(self, start, end):
         if start < 0 or start >= end:
-            raise ValueError("not support value")
+            raise ValueError
         elif end >= self.size:
             end = self.size
         self.seek(start)

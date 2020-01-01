@@ -2,6 +2,7 @@
 import os
 import sys
 
+
 def daemon(pidfile_path=None):
     if hasattr(os, "fork"):
         if os.fork():

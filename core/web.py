@@ -7,15 +7,13 @@ from json import dumps
 from time import time
 from io import BytesIO
 from .utils import timestamp_toCookie, File, ws_return_key
-from .db import DBSession, mem_db
+from .db import DBSession
 from urllib.parse import unquote
 
 database = DBSession()
 
-class BaseRequest:
-    pass
 
-class HTTPRequest(BaseRequest):
+class HTTPRequest:
     def __init__(self, origin, ip="0.0.0.0"):
         self.body = b""
         self.remote = ip
@@ -101,8 +99,8 @@ class Response(object):
         self.code = code
         self.protocol = protocol
 
-    def add_header(self, dict_header):
-        self.header.update(dict_header)
+    def add_header(self, header):
+        self.header.update(header)
 
     def set_cookie(self, name, value, expire=3600, **kwargs):
         result = f"{name}={value}; expires={timestamp_toCookie(time() + expire)};"
@@ -120,11 +118,19 @@ class Response(object):
         header = bytearray()
         header += f"{self.protocol} {self.code} {code_message.get(self.code, 'OK')}\r\n".encode()
         for k, v in self.header.items():
-            header += f"{k}: {v}\r\n".encode()
+            header += k.encode()
+            header += b": "
+            if isinstance(v, (bytes, bytearray)):
+                header += v
+            elif isinstance(v, (str, int)):
+                header += str(v).encode()
+            else:
+                raise ValueError(f"Str, Bytes, int data only, but {type(v)} got")
+            header += b"\r\n"
         header += b"\r\n"
         return header
 
-    async def send(self, sendObj: asyncio.StreamWriter.write, drain: asyncio.StreamWriter.drain) -> int:
+    async def send(self, sendObj: asyncio.StreamWriter.write, drain: asyncio.StreamWriter.drain):
         data = self.build()
         sendObj(data)
         await self.conn_drain(drain)
@@ -144,21 +150,82 @@ class Response(object):
         return False
 
 
+class StreamResponse(Response):
+    def setLen(self, length):
+        self.length = length
+
+    def getLen(self) -> int:
+        if isinstance(self.content, File) and not self.length:
+            return self.content.getSize()
+        return self.length
+
+    @asyncio.coroutine
+    def send(self, sendObj: asyncio.StreamWriter.write, drain: asyncio.StreamWriter.drain) -> int:
+        data = self.content
+        sendObj(self.build())
+        for i in data:
+            try:
+                yield from drain()
+            except ConnectionError:
+                break
+            yield  # Fix "socket.send() raised exception." issue
+            sendObj(i)
+
+
+class JsonResponse(Response):
+    def __init__(self, content):
+        Response.__init__(self, content=dumps(content), content_type="application/json")
+
+
+class FileResponse(Response):
+    def __init__(self, path, content_type="application/octet-stream"):
+        Response.__init__(self, content_type=content_type)
+        try:
+            self.content = File(os.path.join(work_directory, path))
+        except FileNotFoundError:
+            self.content = b"404 Not found"
+
+    def getLen(self) -> int:
+        if isinstance(self.content, File):
+            return self.content.getSize()
+        return len(self.content)
+
+
+class HtmlResponse(Response):
+    def __init__(self, content, request: HTTPRequest):
+        Response.__init__(self, content, content_type="text/html")
+        self.request = request
+        if self.request.head.get("Accept-Encoding"):
+            self.add_header({"Transfer-Encoding": "chunked", "Content-Encoding": "gzip"})
+
+    async def send(self, sendObj: asyncio.StreamWriter.write, drain: asyncio.StreamWriter.drain) -> int:
+        if isinstance(self.content, str):
+            data = self.content.encode()
+        else:
+            data = self.content
+        send = compress(data=data, compresslevel=5)
+        buf = BytesIO(send)
+        sendObj(self.build())
+        while True:
+            if await self.conn_drain(drain):
+                break
+            s = buf.read(512)
+            if s:
+                sendObj(format(len(s), "x").encode())
+                sendObj(b"\r\n")
+                sendObj(s)
+                sendObj(b"\r\n")
+            else:
+                sendObj(b"0")
+                sendObj(b"\r\n\r\n")
+                break
+
+
 class BaseHandler:
-    def __init__(self, request: BaseRequest, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    def __init__(self, request: HTTPRequest, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.request = request
         self.writer = writer
         self.reader = reader
-
-#    async def auth_check(self) -> bool:
-#        cookie = self.request.Cookie.get("session_id")
-#        if cookie:
-#            #result = database.query(Session).filter(Session.sessionid == cookie).one_or_none()
-#            result = mem_db.get(cookie)
-#            print(cookie, result)
-#            if result:
-#                return True
-#        return False
 
     async def run(self):
         pass
@@ -174,16 +241,16 @@ class WebHandler(BaseHandler):
         elif self.request.method == "POST":
             res = await self.post()
         else:
-            res = Http405()
+            res = http405()
         if not res:
             raise ValueError("Function no result")
         return res
 
     async def get(self):
-        return Http405()
+        return http405()
 
     async def post(self):
-        return Http405()
+        return http405()
 
 
 class WsHandler(BaseHandler):
@@ -191,14 +258,14 @@ class WsHandler(BaseHandler):
 
     async def run(self) -> Response:
         if self.request.head.get("Upgrade") != "websocket":
-            return Http405()
+            return http405()
         key = self.request.head.get("Sec-WebSocket-Key")
         if not key:
-            return Http400()
+            return http400()
         res = Response(code=101)
         res.add_header({"Connection": "Upgrade",
                         "Upgrade": "websocket",
-                        "Sec-WebSocket-Accept": ws_return_key(key).decode()})
+                        "Sec-WebSocket-Accept": ws_return_key(key)})
         return res
 
     async def read(self, timeout=-1) -> tuple:
@@ -311,106 +378,35 @@ class WsHandler(BaseHandler):
         self.send_text("", OPCODE_PONG)
 
 
-class StreamResponse(Response):
-    def setLen(self, length):
-        self.length = length
-
-    def getLen(self) -> int:
-        if isinstance(self.content, File) and not self.length:
-            return self.content.getSize()
-        return self.length
-
-    @asyncio.coroutine
-    def send(self, sendObj: asyncio.StreamWriter.write, drain: asyncio.StreamWriter.drain) -> int:
-        data = self.content
-        sendObj(self.build())
-        for i in data:
-            try:
-                yield from drain()
-            except ConnectionError:
-                break
-            yield  # Fix "socket.send() raised exception." issue
-            sendObj(i)
-
-
-class JsonResponse(Response):
-    def __init__(self, content=dict):
-        Response.__init__(self, content=dumps(content), content_type="application/json")
-
-
-class FileResponse(Response):
-    def __init__(self, path, content_type="application/octet-stream"):
-        Response.__init__(self, content_type=content_type)
-        try:
-            self.content = File(os.path.join(work_directory, path))
-        except FileNotFoundError:
-            self.content = b"404 Not found"
-
-    def getLen(self) -> int:
-        if isinstance(self.content, File):
-            return self.content.getSize()
-        return len(self.content)
-
-
-class HtmlResponse(Response):
-    def __init__(self, content, request: BaseRequest):
-        Response.__init__(self, content, content_type="text/html")
-        self.request = request
-        if self.request.head.get("Accept-Encoding"):
-            self.add_header({"Transfer-Encoding": "chunked", "Content-Encoding": "gzip"})
-
-    async def send(self, sendObj: asyncio.StreamWriter.write, drain: asyncio.StreamWriter.drain) -> int:
-        if isinstance(self.content, str):
-            data = self.content.encode()
-        else:
-            data = self.content
-        send = compress(data=data, compresslevel=5)
-        buf = BytesIO(send)
-        sendObj(self.build())
-        while True:
-            if await self.conn_drain(drain):
-                break
-            s = buf.read(512)
-            if s:
-                sendObj(format(len(s), "x").encode())
-                sendObj(b"\r\n")
-                sendObj(s)
-                sendObj(b"\r\n")
-            else:
-                sendObj(b"0")
-                sendObj(b"\r\n\r\n")
-                break
-
-
-def Http204():
+def http204():
     return Response(code=204)
 
 
-def Http404(message="404 Not Found"):
+def http404(message="404 Not Found"):
     return Response(message, 404)
 
 
-def Http400(message="400 Client Error"):
+def http400(message="400 Client Error"):
     return Response(message, 400)
 
 
-def Http301(url):
+def http301(url):
     res = Response(code=301)
     res.add_header({"Location": url})
     return res
 
 
-def HttpServerError(message="500 Internet Server Error"):
-    return Response(message, 500)
-
-
-def Http304():
+def http304():
     return Response(code=304)
 
 
-def Http403(message="Access denied"):
+def http403(message="Access denied"):
     return Response(message, 403)
 
 
-def Http405(message="405 Method Not Allow"):
+def http405(message="405 Method Not Allow"):
     return Response(message, 405)
+
+
+def HttpServerError(message="500 Internet Server Error"):
+    return Response(message, 500)

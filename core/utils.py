@@ -104,24 +104,22 @@ def render(template, **kwargs):
     template = env.get_template(template)
     return template.render(**kwargs)
 
-def ws_return_key(key):
-    return b64encode(sha1(key+ws_magic_string).digest())
+def ws_return_key(key: (str, bytes)) -> bytes:
+    if isinstance(key, str):
+        return b64encode(sha1(key.encode() + ws_magic_string).digest())
+    return b64encode(sha1(key + ws_magic_string).digest())
 
 def path(p_url: str, target: object) -> tuple:
     com = re.compile(p_url)
     return com, target
 
-def get_handler(reload=False):
+def get_handler():
     result = {}
     for k, v in conf.get("server", "handler").items():
         urls = []
         for module_path in v:
-            if reload:
-                module = importlib.reload(importlib.import_module(module_path))
-            else:
-                module = importlib.import_module(module_path)
             urls.extend(
-                module.pattern
+                importlib.import_module(module_path).pattern
             )
         result[k] = urls
     return result

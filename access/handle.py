@@ -1,5 +1,5 @@
 from time import time
-from core.web import WebHandler, Http400, Http301, HtmlResponse, JsonResponse
+from core.web import WebHandler, http400, http301, HtmlResponse, JsonResponse
 from core.utils import render
 from .utils import check_login_info, login, register, encrypt_passwd, auth_require
 
@@ -9,7 +9,7 @@ class user_login(WebHandler):
         try:
             user, passwd = self.request.POST.values()
         except ValueError:
-            return Http400()
+            return http400()
         if user or passwd:
             if check_login_info(user, passwd):
                 expire = int(time() + 172800)  # 2 days
@@ -30,11 +30,11 @@ class user_register(WebHandler):
         try:
             user, passwd = self.request.POST.values()
         except ValueError:
-            return Http400()
+            return http400()
         if user or passwd: 
             if check_login_info(user, passwd) == -1: 
                 register(user, encrypt_passwd(passwd)) 
-                res = Http301("/access/login") 
+                res = http301("/access/login")
             else: 
                 res = JsonResponse({"status": 400, "message": "Username is Exist"})
         else: 

@@ -2,7 +2,7 @@ import sys
 import socket
 import asyncio
 from .logger import main_logger
-from .web import HTTPRequest, Http404, HttpServerError, BaseHandler
+from .web import HTTPRequest, http404, HttpServerError, BaseHandler
 from .config import conf
 from .utils import url_match
 
@@ -12,7 +12,7 @@ except ImportError:
     uvloop = None
 
 
-def gethostip(default=""):
+def get_local_ip(default=""):
     try:
         return socket.gethostbyname(socket.gethostname())
     except socket.gaierror:
@@ -64,6 +64,46 @@ class FullAsyncServer(object):
     def millis(self):
         return int(self.loop.time() * 1000)
 
+    async def http1_handler(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, data: tuple) -> bool:
+        ip, header = data
+        if header:
+            try:
+                req = HTTPRequest(header, ip)
+            except (ValueError, AttributeError):
+                self.log.warning("Request Unpack Error(from %s)" % ip)
+                self.log.warning(("Origin data: ", header))
+                return False
+            pattern = self.handler.get(req.head.get("Host", "*"), self.handler.get("global"))
+            length = req.head.get("Content-Length")
+            if length:
+                req.body = await reader.read(int(length))
+            start_time = self.millis()
+            match = url_match(req.path, pattern)
+            if match:
+                req.re_args = match[1].groups()
+                try:
+                    obj: BaseHandler = match[0](req, reader, writer)
+                    res = await obj.run()
+                except Exception:
+                    self.log.exception("Handler Error:")
+                    res = HttpServerError()
+            else:
+                res = http404()
+            if res.code != 101:
+                res.add_header({"Access-Control-Allow-Origin": "*",
+                                "Content-length": res.getLen(),
+                                "Connection": req.head.get("Connection", "close").lower(),
+                                "Server": "NullcatServer"})
+                await res.send(writer.write, writer.drain)
+            else:
+                await res.send(writer.write, writer.drain)
+                await obj.loop()
+                req.head["Connection"] = "close"
+            self.log.info(f"{req.method} {req.path}:{res.code} {ip}({self.millis() - start_time}ms)")
+            if req.head.get("Connection", "close") == "close":
+                return False
+            return True
+
     async def server(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         ip, port = writer.get_extra_info("peername")[0:2]
         while True:
@@ -74,50 +114,10 @@ class FullAsyncServer(object):
             except OSError as e:
                 print(e)
                 break
-            if header:
-                try:
-                    req = HTTPRequest(header, ip)
-                except (ValueError, AttributeError):
-                    self.log.warning("Request Unpack Error(from %s)" % ip)
-                    self.log.warning(("Origin data: ", header))
-                    break
-                pattern = self.handler.get(req.head.get("Host", "*"), self.handler.get("global"))
-                length = req.head.get("Content-Length")
-                if length:
-                    req.body = await reader.read(int(length))
-                start_time = self.millis()
-                match = url_match(req.path, pattern)
-                if match:
-                    req.re_args = match[1].groups()
-                    try:
-                        obj: BaseHandler = match[0](req, reader, writer)
-                        res = await obj.run()
-                    except Exception:
-                        self.log.exception("Handler Error:")
-                        res = HttpServerError()
-                else:
-                    res = Http404()
-                if res.code != 101:
-                    if req.head.get("Connection", "close").lower() == "keep-alive":
-                        state = "keep-alive"
-                    else:
-                        state = "close"
-                    res.add_header({"Access-Control-Allow-Origin": "*",
-                                    "Content-length": res.getLen(),
-                                    "Connection": state,
-                                    "Server": "NullcatServer"})
-                    await res.send(writer.write, writer.drain)
-                else:
-                    await res.send(writer.write, writer.drain)
-                    await obj.loop()
-                    req.head["Connection"] = "close"
-                self.log.info(f"{req.method} {req.path}:{res.code} {ip}({self.millis() - start_time}ms)")
-                if req.head.get("Connection", "close") == "close":
-                    break
-            else:
+            if not await self.http1_handler(reader, writer, (ip, header)):
                 break
-        self.log.debug(f"{ip}:{port} disconnect")
         writer.close()
+        self.log.debug(f"[{ip}:{port}]: connect lost")
 
     def signal_handler(self, sig):
         self.log.warning(f"Got signal {sig}, closing...")

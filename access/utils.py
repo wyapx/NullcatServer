@@ -1,8 +1,8 @@
 import secrets
 from hashlib import sha3_512
 from .tables import Session, User
-from core.db import DBSession, mem_db
-from core.web import Http403
+from core.db import DBSession
+from core.web import http403
 
 
 database = DBSession()
@@ -38,5 +38,5 @@ def auth_require(func):
             result = database.query(Session).filter(Session.sessionid == cookie).one_or_none()
             if result:
                 return await func(self)
-        return Http403()
+        return http403()
     return decorated

@@ -25,8 +25,8 @@ class static(WebHandler):
                 content_range = request.head.get("Range")
                 if content_range:
                     start, end = parse_range(content_range, f.size)
-                    f.set_range(start, end)
-                    res.add_header({"Content-Range": f"bytes {start}-{end}/{f.size}"})
+                    f.set_range(start, end-start+1)
+                    res.add_header({"Content-Range": f"bytes {start}-{end}/{f.size+1}"})
                     if_unmodified_since = request.head.get("If-Unmodified-Since")
                     if if_unmodified_since == mtime:
                         res.code = 200
@@ -36,6 +36,7 @@ class static(WebHandler):
                         res.code = 206
                     res.setLen(end-start+1)
                 else:
+                    res.setLen(f.getSize())
                     res.add_header({"Accept-Ranges": "bytes",
                                     "Cache-Control": "no-cache",
                                     "Last-Modified": mtime.decode(),

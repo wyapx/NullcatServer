@@ -130,23 +130,25 @@ class Response(object):
         header += b"\r\n"
         return header
 
-    async def send(self, sendObj: asyncio.StreamWriter.write, drain: asyncio.StreamWriter.drain):
+    async def send(self, writer: asyncio.StreamWriter):
         data = self.build()
-        sendObj(data)
-        await self.conn_drain(drain)
+        writer.write(data)
+        await self.conn_drain(writer.drain)
         if isinstance(self.content, bytes):
-            sendObj(self.content)
+            writer.write(self.content)
         elif isinstance(self.content, File):
-            sendObj(self.content.full_read())
+            writer.write(self.content.full_read())
         else:
-            sendObj(self.content.encode())
+            writer.write(self.content.encode())
 
     @staticmethod
-    async def conn_drain(drain) -> bool:
+    @asyncio.coroutine
+    def conn_drain(drain) -> bool:
         try:
-            await drain()
+            yield from drain()
         except ConnectionError:
             return True
+        yield  # Fix "socket.send() raised exception." issue
         return False
 
 
@@ -155,21 +157,15 @@ class StreamResponse(Response):
         self.length = length
 
     def getLen(self) -> int:
-        if isinstance(self.content, File) and not self.length:
-            return self.content.getSize()
         return self.length
 
-    @asyncio.coroutine
-    def send(self, sendObj: asyncio.StreamWriter.write, drain: asyncio.StreamWriter.drain) -> int:
+    async def send(self, writer: asyncio.StreamWriter):
         data = self.content
-        sendObj(self.build())
-        for i in data:
-            try:
-                yield from drain()
-            except ConnectionError:
-                break
-            yield  # Fix "socket.send() raised exception." issue
-            sendObj(i)
+        writer.write(self.build())
+        async for i in data:
+            if await self.conn_drain(writer.drain):
+                return
+            writer.write(i)
 
 
 class JsonResponse(Response):
@@ -186,8 +182,6 @@ class FileResponse(Response):
             self.content = b"404 Not found"
 
     def getLen(self) -> int:
-        if isinstance(self.content, File):
-            return self.content.getSize()
         return len(self.content)
 
 
@@ -195,29 +189,25 @@ class HtmlResponse(Response):
     def __init__(self, content, request: HTTPRequest):
         Response.__init__(self, content, content_type="text/html")
         self.request = request
-        if self.request.head.get("Accept-Encoding"):
-            self.add_header({"Transfer-Encoding": "chunked", "Content-Encoding": "gzip"})
+        self.add_header({"Transfer-Encoding": "chunked"})
 
-    async def send(self, sendObj: asyncio.StreamWriter.write, drain: asyncio.StreamWriter.drain) -> int:
+    async def send(self, writer: asyncio.StreamWriter):
         if isinstance(self.content, str):
             data = self.content.encode()
         else:
             data = self.content
-        send = compress(data=data, compresslevel=5)
-        buf = BytesIO(send)
-        sendObj(self.build())
+        buf = BytesIO(data)
+        writer.write(self.build())
         while True:
-            if await self.conn_drain(drain):
+            if await self.conn_drain(writer.drain):
                 break
             s = buf.read(512)
             if s:
-                sendObj(format(len(s), "x").encode())
-                sendObj(b"\r\n")
-                sendObj(s)
-                sendObj(b"\r\n")
+                writer.write(format(len(s), 'x').encode())
+                writer.write(b"\r\n")
+                writer.write(s)
             else:
-                sendObj(b"0")
-                sendObj(b"\r\n\r\n")
+                writer.write(b"0\r\n\r\n")
                 break
 
 

@@ -94,9 +94,9 @@ class FullAsyncServer(object):
                                 "Content-length": res.getLen(),
                                 "Connection": req.head.get("Connection", "close").lower(),
                                 "Server": "NullcatServer"})
-                await res.send(writer.write, writer.drain)
+                await res.send(writer)
             else:
-                await res.send(writer.write, writer.drain)
+                await res.send(writer)
                 await obj.loop()
                 req.head["Connection"] = "close"
             self.log.info(f"{req.method} {req.path}:{res.code} {ip}({self.millis() - start_time}ms)")

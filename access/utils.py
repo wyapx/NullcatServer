@@ -16,10 +16,14 @@ def check_login_info(username, passwd) -> int:
     user = database.query(User.password).filter(User.name == username).one_or_none()
     if user:
         if user[0] == encrypt_passwd(passwd):
-            return 1
-        return 0
-    else:
-        return -1
+            return True
+    return False
+
+def check_username_exist(username):
+    user = database.query(User.password).filter(User.name == username).one_or_none()
+    if user:
+        return True
+    return False
 
 def login(username, expires) -> bytes:
     key = secrets.token_hex(20)

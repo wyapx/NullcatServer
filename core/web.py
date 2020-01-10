@@ -122,7 +122,7 @@ class Response(object):
             header += b": "
             if isinstance(v, (bytes, bytearray)):
                 header += v
-            elif isinstance(v, (str, int)):
+            elif isinstance(v, (str, int, float)):
                 header += str(v).encode()
             else:
                 raise ValueError(f"Str, Bytes, int data only, but {type(v)} got")

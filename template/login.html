@@ -1,7 +1,37 @@
 {% extends "base.html" %}
 {% block head %}
     {{ super() }}
-    <script src="/static/js/access.js"></script>
+    <script>function submit_form() {
+    let body = $(".alert-body");
+    let button = $("#submit_button");
+    body.empty();
+    body.attr("style", "display: none");
+    let username = document.getElementsByName("username")[0].value;
+    let password = document.getElementsByName("password")[0].value;
+    button.attr("disabled", true);
+    $.ajax({
+        url: "/access/login",
+        method: "POST",
+        data: {"username": username, "password": password},
+        dataType: "json",
+        success: function (data) {
+            console.log(data);
+            if (data["status"] === 200) {
+                window.location.href = data["redirect_to"]
+            } else {
+                body.attr("style", "display: block");
+                body.append(data["message"])
+            }
+            button.removeAttr("disabled");
+        },
+        error: function () {
+            body.attr("style", "display: block");
+            body.append("未知错误");
+            button.removeAttr("disabled");
+        }
+    });
+    return false;
+}</script>
     <style>
     .app{
         max-width: 20em;

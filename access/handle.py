@@ -1,7 +1,7 @@
 from time import time
-from core.web import WebHandler, http400, http301, HtmlResponse, JsonResponse
+from core.web import WebHandler, http400, http301, Response, JsonResponse
 from core.utils import render
-from .utils import check_login_info, login, register, encrypt_passwd, auth_require
+from .utils import check_login_info, login, register, encrypt_passwd, auth_require, check_username_exist
 
 
 class user_login(WebHandler):
@@ -23,7 +23,7 @@ class user_login(WebHandler):
         return res
 
     async def get(self):
-        return HtmlResponse(render("login.html"), self.request)
+        return Response(render("login.html"))
 
 class user_register(WebHandler):
     async def post(self):
@@ -32,7 +32,7 @@ class user_register(WebHandler):
         except ValueError:
             return http400()
         if user or passwd: 
-            if check_login_info(user, passwd) == -1: 
+            if not check_username_exist(user):
                 register(user, encrypt_passwd(passwd)) 
                 res = http301("/access/login")
             else: 
@@ -42,7 +42,7 @@ class user_register(WebHandler):
         return res
 
     async def get(self):
-        return HtmlResponse(render("register.html"), self.request)
+        return Response(render("register.html"))
 
 class test(WebHandler):
     @auth_require

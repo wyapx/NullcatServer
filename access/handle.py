@@ -1,5 +1,5 @@
 from time import time
-from core.web import WebHandler, http400, http301, Response, JsonResponse
+from core.web import WebHandler, http400, http301, JsonResponse, Response
 from core.utils import render
 from .utils import check_login_info, login, register, encrypt_passwd, auth_require, check_username_exist
 

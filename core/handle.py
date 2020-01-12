@@ -22,10 +22,10 @@ class static(WebHandler):
             else:
                 file_type = get_type(path)
                 res = StreamResponse(f, content_type=file_type)
-                content_range = request.head.get("Range")
+                content_range = None  # request.head.get("Range")
                 if content_range:
                     start, end = parse_range(content_range, f.size)
-                    f.set_range(start, end-start+1)
+                    f.set_range(start, end-start)
                     res.add_header({"Content-Range": f"bytes {start}-{end}/{f.size+1}"})
                     if_unmodified_since = request.head.get("If-Unmodified-Since")
                     if if_unmodified_since == mtime:
@@ -34,11 +34,9 @@ class static(WebHandler):
                         return Response(code=412)
                     else:
                         res.code = 206
-                    res.setLen(end-start+1)
+                    res.setLen(end-start)
                 else:
-                    res.setLen(f.getSize())
-                    res.add_header({"Accept-Ranges": "bytes",
-                                    "Cache-Control": "no-cache",
+                    res.add_header({"Cache-Control": "no-cache",
                                     "Last-Modified": mtime.decode(),
                                     "Etag": f.mtime()})
             return res

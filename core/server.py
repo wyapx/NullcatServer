@@ -49,7 +49,9 @@ def get_ssl_context(alpn: list, cert_path, key_path):
 class FullAsyncServer(object):
     log = main_logger.get_logger()
 
-    def __init__(self, handler, block=True, loop=get_best_loop()):
+    def __init__(self, handler, block=True, loop=None):
+        if not loop:
+            loop = get_best_loop(conf.get("server", "loop_debug"))
         self.block = block
         self.handler = handler
         self.timeout = conf.get("server", "request_timeout")
@@ -73,7 +75,7 @@ class FullAsyncServer(object):
                 self.log.warning("Request Unpack Error(from %s)" % ip)
                 self.log.warning(("Origin data: ", header))
                 return False
-            pattern = self.handler.get(req.head.get("Host", "*"), self.handler.get("global"))
+            pattern = self.handler.get(req.head.get("Host", "*"), self.handler.get("*", []))
             length = req.head.get("Content-Length")
             if length:
                 req.body = await reader.read(int(length))
@@ -129,7 +131,11 @@ class FullAsyncServer(object):
             for sig in (SIGTERM, SIGINT):
                 self.loop.add_signal_handler(sig, self.signal_handler, sig)
         if conf.get("http", "is_enable"):
-            http = asyncio.start_server(self.server,
+            if conf.get("http", "rewrite_only") and self.ssl:
+                from .rewrite import server
+            else:
+                server = self.server
+            http = asyncio.start_server(server,
                                         conf.get("http", "host"),
                                         conf.get("http", "port"))
             self.loop.run_until_complete(http)

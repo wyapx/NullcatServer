@@ -121,10 +121,10 @@ def url_match(url: str, kv: list) -> list or None:
 
 def parse_range(origin, max_value=0) -> tuple:
     chunk_size = max_value
-    unit, arange = origin.split(b"=", 1)
-    if unit != b"bytes":
+    unit, arange = origin.split("=", 1)
+    if unit != "bytes":
         raise TypeError("Only support bytes unit")
-    start, end = arange.split(b"-")
+    start, end = arange.split("-")
     if not end:
         end = int(start) + chunk_size
         if end > max_value:

@@ -59,7 +59,7 @@ class HTTPRequest:
         try:
             for i in block:
                 k, v = i.split(b"=", 1)
-                result[k] = v
+                result[k.decode()] = v
             return result
         except ValueError:
             return {}
@@ -85,11 +85,14 @@ class Response(object):
         self.code = code
         self.protocol = "HTTP/1.1"
         self.header = {"Content-Type": content_type}
-        self.content = content
-        if isinstance(self.content, (str, bytes)):
+        if isinstance(content, str):
+            self.content = content.encode()
+            self.length = len(self.content)
+        elif isinstance(content, (bytes, bytearray, File)):
+            self.content = content
             self.length = len(self.content)
         else:
-            self.length = 0
+            raise ValueError(f"Wrong type {type(content)}")
 
     def set_content(self, content):
         self.content = content
@@ -134,12 +137,10 @@ class Response(object):
         data = self.build()
         writer.write(data)
         await self.conn_drain(writer.drain)
-        if isinstance(self.content, bytes):
-            writer.write(self.content)
-        elif isinstance(self.content, File):
+        if isinstance(self.content, File):
             writer.write(self.content.full_read())
         else:
-            writer.write(self.content.encode())
+            writer.write(self.content)
 
     @staticmethod
     @asyncio.coroutine
@@ -157,6 +158,8 @@ class StreamResponse(Response):
         self.length = length
 
     def getLen(self) -> int:
+        if isinstance(self.content, File) and not self.length:
+            return self.content.getSize()
         return self.length
 
     async def send(self, writer: asyncio.StreamWriter):
@@ -186,9 +189,8 @@ class FileResponse(Response):
 
 
 class HtmlResponse(Response):
-    def __init__(self, content, request: HTTPRequest):
+    def __init__(self, content):
         Response.__init__(self, content, content_type="text/html")
-        self.request = request
         self.add_header({"Transfer-Encoding": "chunked"})
 
     async def send(self, writer: asyncio.StreamWriter):

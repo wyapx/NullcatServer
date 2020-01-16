@@ -1,7 +1,7 @@
 import re
 import asyncio
 import struct
-from .const_var import *
+from .ext.const import *
 from gzip import compress
 from json import dumps
 from time import time

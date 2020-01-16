@@ -1,12 +1,13 @@
 import os
 import json
-from .const_var import work_directory
+from .ext.const import work_directory
 
 
 base_config = {
     "server": {
         "request_timeout": 10,
         "daemon": True,
+        "loop_debug": False,
         "handler": {"*": ["core.urls"]}
      },
     "http": {

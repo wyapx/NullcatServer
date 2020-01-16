@@ -6,7 +6,7 @@ import importlib
 from hashlib import sha1
 from base64 import b64encode
 from .config import conf
-from .const_var import work_directory, ws_magic_string
+from .ext.const import work_directory, ws_magic_string
 from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache
 
 template_path = conf.get("template", "template_path")

@@ -1,5 +1,6 @@
-from access.tables import Base
-from core.db import engine
+import access.tables
+import sitelink.tables
+from core.db import engine, Base
 
 if __name__ == '__main__':
     while True:

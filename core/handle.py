@@ -1,8 +1,8 @@
 import os
-from .mimetype import get_type
+from .ext.mimetype import get_type
 from .web import http404, StreamResponse, http304, http400, WebHandler, Response
 from .utils import File, timestamp_toCookie, parse_range
-from .const_var import work_directory
+from .ext.const import work_directory
 
 ### CONST DEFINE ###
 static_path = os.path.join(work_directory, "static/")

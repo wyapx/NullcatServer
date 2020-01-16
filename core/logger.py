@@ -3,7 +3,7 @@ import sys
 import time
 import logging
 from .config import conf
-from .const_var import work_directory
+from .ext.const import work_directory
 
 level = conf.get("logger", "level")
 log_format = conf.get("logger", "formatter").replace("$", "%")

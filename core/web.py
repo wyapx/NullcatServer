@@ -2,11 +2,9 @@ import re
 import asyncio
 import struct
 from .ext.const import *
-from gzip import compress
 from json import dumps
 from time import time
-from io import BytesIO
-from .utils import timestamp_toCookie, File, ws_return_key
+from .utils import timestamp_toCookie, File, ws_return_key, render
 from .db import DBSession
 from urllib.parse import unquote
 
@@ -142,6 +140,9 @@ class Response(object):
         else:
             writer.write(self.content)
 
+    def __repr__(self):
+        return f"<Response code={self.code} header={self.header}>"
+
     @staticmethod
     @asyncio.coroutine
     def conn_drain(drain) -> bool:
@@ -189,28 +190,9 @@ class FileResponse(Response):
 
 
 class HtmlResponse(Response):
-    def __init__(self, content):
-        Response.__init__(self, content, content_type="text/html")
-        self.add_header({"Transfer-Encoding": "chunked"})
-
-    async def send(self, writer: asyncio.StreamWriter):
-        if isinstance(self.content, str):
-            data = self.content.encode()
-        else:
-            data = self.content
-        buf = BytesIO(data)
-        writer.write(self.build())
-        while True:
-            if await self.conn_drain(writer.drain):
-                break
-            s = buf.read(512)
-            if s:
-                writer.write(format(len(s), 'x').encode())
-                writer.write(b"\r\n")
-                writer.write(s)
-            else:
-                writer.write(b"0\r\n\r\n")
-                break
+    def __init__(self, template_name, **kwargs):
+        content = render(template_name, **kwargs)
+        Response.__init__(self, content, content_type="text/html charset=utf-8")
 
 
 class BaseHandler:

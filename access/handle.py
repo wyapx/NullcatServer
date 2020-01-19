@@ -1,6 +1,6 @@
 from time import time
-from core.web import WebHandler, http400, http301, JsonResponse, Response
-from core.utils import render
+from core.web import WebHandler, http400, http301, JsonResponse, HtmlResponse
+from core.ext.pgcache import PGCached
 from .utils import check_login_info, login, register, encrypt_passwd, auth_require, check_username_exist
 
 
@@ -12,7 +12,7 @@ class user_login(WebHandler):
             return http400()
         if user or passwd:
             if check_login_info(user, passwd):
-                expire = int(time() + 172800)  # 2 days
+                expire = int(time() + 86400*5)  # 5 days
                 key = login(user, expire)
                 res = JsonResponse({"status": 200, "redirect_to": "/"})
                 res.set_cookie("session_id", key, path="/", HttpOnly="")
@@ -22,8 +22,9 @@ class user_login(WebHandler):
             res = JsonResponse({"status": 400, "message": "请输入用户名和密码"})
         return res
 
+    #@PGCached.cache
     async def get(self):
-        return Response(render("login.html"))
+        return HtmlResponse("login.html")
 
 class user_register(WebHandler):
     async def post(self):
@@ -41,10 +42,12 @@ class user_register(WebHandler):
             res = JsonResponse({"status": 400, "message": "Please input username and password"}) 
         return res
 
+    @PGCached.cache
     async def get(self):
-        return Response(render("register.html"))
+        return HtmlResponse("register.html")
 
 class test(WebHandler):
     @auth_require
+    @PGCached.cache
     async def get(self):
         return JsonResponse({"status": 'OK'})

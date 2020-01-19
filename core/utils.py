@@ -17,11 +17,10 @@ loader = FileSystemLoader(template_path)
 if conf.get("template", "use_fs_cache"):
     if not os.path.exists(cache_path):
         os.mkdir(cache_path)
-    cache = FileSystemBytecodeCache(os.path.join(work_directory, cache_path), "%s.cache")
+    bc_cache = FileSystemBytecodeCache(os.path.join(work_directory, cache_path), "%s.cache")
 else:
-    cache = None
-env = Environment(loader=loader, bytecode_cache=cache, enable_async=False)
-
+    bc_cache = None
+env = Environment(loader=loader, bytecode_cache=bc_cache, enable_async=False)
 
 class File(object):
     def __init__(self, path, buf_size=65535):

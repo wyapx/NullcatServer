@@ -69,6 +69,7 @@ class FullAsyncServer(object):
     async def http1_handler(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, data: tuple) -> bool:
         ip, header = data
         if header:
+            start_time = self.millis()
             try:
                 req = HTTPRequest(header, ip)
             except (ValueError, AttributeError):
@@ -79,7 +80,6 @@ class FullAsyncServer(object):
             length = req.head.get("Content-Length")
             if length:
                 req.body = await reader.read(int(length))
-            start_time = self.millis()
             match = url_match(req.path, pattern)
             if match:
                 req.re_args = match[1].groups()
@@ -154,4 +154,3 @@ class FullAsyncServer(object):
             except KeyboardInterrupt:
                 self.loop.stop()
             self.log.warning("Server closed")
-

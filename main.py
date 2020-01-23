@@ -2,7 +2,7 @@
 #os.chdir(os.path.abspath(__file__)[:5])
 from core.config import conf
 from core.server import FullAsyncServer
-from core.utils import get_handler
+from core.route import get_handler
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 from . import handle
-from core.utils import path
+from core.route import path
 
 pattern = [
     path("^/access/login$", handle.user_login),

@@ -1,4 +1,5 @@
 import re
+import base64
 import asyncio
 import struct
 from .ext.const import *
@@ -226,6 +227,26 @@ class WebHandler(BaseHandler):
     async def post(self):
         return http405()
 
+class BaseAuthHandler(WebHandler):
+    user = b""
+    password = b""
+    realm = "NullcatServer"
+    async def run(self) -> Response:
+        if "Authorization" not in self.request.head:
+            res = Response("401 Unauthorized", code=401)
+            res.add_header({"WWW-Authenticate": f'Basic realm="{self.realm}"'})
+        else:
+            raw = self.request.head.get("Authorization", "")
+            typ, content = raw.split(" ", 1)
+            if typ != "Basic":
+                return Response(f"Unknown auth method {typ}", codr=400)
+            user, password = base64.b64decode(content).split(b":", 1)
+            if user != self.user or password != self.password:
+                res = Response("401 Unauthorized", code=401)
+                res.add_header({"WWW-Authenticate": f'Basic realm="{self.realm}"'})
+            else:
+                res = await WebHandler.run(self)
+        return res
 
 class WsHandler(BaseHandler):
     keep_alive = True
@@ -233,8 +254,8 @@ class WsHandler(BaseHandler):
     async def run(self) -> Response:
         if self.request.head.get("Upgrade") != "websocket":
             return http405()
-        key = self.request.head.get("Sec-WebSocket-Key")
-        if not key:
+        key = self.request.head.get("Sec-WebSocket-Key", "")
+        if len(key) != 24:  # 16 bytes fixed
             return http400()
         res = Response(code=101)
         res.add_header({"Connection": "Upgrade",
@@ -250,14 +271,13 @@ class WsHandler(BaseHandler):
                 b1, b2 = await asyncio.wait_for(self.reader.read(2), timeout)
         except asyncio.TimeoutError:
             return None, None
-        except ValueError:
+        except (ValueError, ConnectionError):
             return None, OPCODE_CLOSE_CONN
         # fin = b1 & FIN
         opcode = b1 & OPCODE
         masked = b2 & MASKED
         payload_length = b2 & PAYLOAD_LEN
         if opcode == OPCODE_CLOSE_CONN:
-            print("close")
             self.close_connection()
             return None, opcode
         if not masked:
@@ -319,28 +339,31 @@ class WsHandler(BaseHandler):
         self.send_text(data)
         await self.writer.drain()
 
-    async def write_nowait(self, data):
+    def write_nowait(self, data):
         self.send_text(data)
 
     async def loop(self):
-        await self.onInit()
-        while self.keep_alive:
-            data, opcode = await self.read(30)
-            if opcode == OPCODE_TEXT:
-                await self.onReceive(data)
-            elif opcode == OPCODE_PING:
-                await self.onPing()
-            elif opcode == OPCODE_PONG:
-                pass
-            elif opcode == OPCODE_CLOSE_CONN:
-                self.close_connection()
-                self.keep_alive = False
-            else:
-                if not opcode:
-                    self.send_text("", opcode=OPCODE_PING)
-                    continue
-                print("Unhandle opcode:", opcode)
-                self.close_connection()
+        try:
+            await self.onInit()
+            while self.keep_alive:
+                data, opcode = await self.read(10)
+                if opcode == OPCODE_TEXT:
+                    await self.onReceive(data)
+                elif opcode == OPCODE_PING:
+                    await self.onPing()
+                elif opcode == OPCODE_PONG:
+                    pass
+                elif opcode == OPCODE_CLOSE_CONN:
+                    await self.onClose()
+                else:
+                    if not opcode:
+                        self.send_text("", opcode=OPCODE_PING)
+                        continue
+                    print("Unhandle opcode:", opcode)
+                    self.close_connection()
+        except ConnectionError as e:
+            print(e)
+            self.close_connection()
 
     async def onInit(self):
         pass
@@ -350,6 +373,9 @@ class WsHandler(BaseHandler):
 
     async def onPing(self):
         self.send_text("", OPCODE_PONG)
+
+    async def onClose(self):
+        self.close_connection()
 
 
 def http204():

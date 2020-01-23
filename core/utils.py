@@ -141,19 +141,3 @@ def ws_return_key(key: (str, bytes)) -> bytes:
         return b64encode(sha1(key.encode() + ws_magic_string).digest())
     return b64encode(sha1(key + ws_magic_string).digest())
 
-
-def path(p_url: str, target: object) -> tuple:
-    com = re.compile(p_url)
-    return com, target
-
-
-def get_handler():
-    result = {}
-    for k, v in conf.get("server", "handler").items():
-        urls = []
-        for module_path in v:
-            urls.extend(
-                importlib.import_module(module_path).pattern
-            )
-        result[k] = urls
-    return result

@@ -80,10 +80,12 @@ class HTTPRequest:
 
 
 class Response(object):
-    def __init__(self, content="", code=200, content_type="text/html"):
+    def __init__(self, content="", code=200, header=None, content_type="text/html"):
+        if not header:
+            header = {}
         self.code = code
         self.protocol = "HTTP/1.1"
-        self.header = {"Content-Type": content_type}
+        self.header = {"Content-Type": content_type, **header}
         if isinstance(content, str):
             self.content = content.encode()
             self.length = len(self.content)
@@ -174,13 +176,13 @@ class StreamResponse(Response):
 
 
 class JsonResponse(Response):
-    def __init__(self, content):
-        Response.__init__(self, content=dumps(content), content_type="application/json")
+    def __init__(self, content, header=None):
+        Response.__init__(self, content=dumps(content), header=header, content_type="application/json")
 
 
 class FileResponse(Response):
-    def __init__(self, path, content_type="application/octet-stream"):
-        Response.__init__(self, content_type=content_type)
+    def __init__(self, path, header=None, content_type="application/octet-stream"):
+        Response.__init__(self, header=header, content_type=content_type)
         try:
             self.content = File(os.path.join(work_directory, path))
         except FileNotFoundError:
@@ -191,9 +193,9 @@ class FileResponse(Response):
 
 
 class HtmlResponse(Response):
-    def __init__(self, template_name, **kwargs):
+    def __init__(self, template_name, header=None, **kwargs):
         content = render(template_name, **kwargs)
-        Response.__init__(self, content, content_type="text/html charset=utf-8")
+        Response.__init__(self, content, header=header, content_type="text/html charset=utf-8")
 
 
 class BaseHandler:
@@ -247,6 +249,31 @@ class BaseAuthHandler(WebHandler):
             else:
                 res = await WebHandler.run(self)
         return res
+
+class APIHandler(WebHandler):
+    code = 200
+    header = {}
+    def _get_new_data(self):
+        origin = dir(BaseHandler)
+        now = dir(self)
+        attr_list = list(set(now) - set(origin))
+        result = dict()
+        for n in attr_list:
+            result[n] = getattr(self, n)
+        return result
+
+    async def run(self) -> Response:
+        res = await WebHandler.run(self)
+        if not Response:
+            return Response(header=self.header, code=204)
+        if isinstance(res, (dict, list)):
+            return Response(content=dumps(res), header=self.header, code=self.code)
+        elif isinstance(res, (str, int, set)):
+            return Response(content=str(res), header=self.header, code=self.code)
+        elif isinstance(res, (bytes, bytearray)):
+            return Response(content=res, header=self.header, code=self.code)
+        else:
+            raise TypeError(f"Unknown type:{type(res)}")
 
 class WsHandler(BaseHandler):
     keep_alive = True

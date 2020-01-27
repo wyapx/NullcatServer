@@ -2,9 +2,10 @@ import os
 import re
 import time
 import asyncio
-import importlib
 from hashlib import sha1
 from base64 import b64encode
+from typing import Optional, Tuple
+
 from .config import conf
 from .ext.const import work_directory, ws_magic_string
 from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache
@@ -81,13 +82,13 @@ class File(object):
         buf = bytearray(self.buf_size)
         if self.chunk_size:
             while True:
-                self.chunk_size -= self.buf_size
                 if self.chunk_size <= 0:
                     break
                 read = await loop.run_in_executor(None, self._file.readinto, buf)
                 if not read:
                     break  # EOF
                 yield buf
+                self.chunk_size -= self.buf_size
         else:
             while True:
                 read = await loop.run_in_executor(None, self._file.readinto, buf)
@@ -118,17 +119,19 @@ def url_match(url: str, kv: list) -> list or None:
     return None
 
 
-def parse_range(origin, max_value=0) -> tuple:
-    chunk_size = max_value
-    unit, arange = origin.split("=", 1)
-    if unit != "bytes":
-        raise TypeError("Only support bytes unit")
-    start, end = arange.split("-")
-    if not end:
-        end = int(start) + chunk_size
-        if end > max_value:
-            end = max_value - 1
-    return int(start), int(end)
+def parse_range(origin, max_value=0) -> Optional[Tuple[int, int, int]]:
+    result = re.match(r"bytes=(\d*)-(\d*)", origin)
+    if result:
+        if result.groups()[1]:
+            offset, byte = (int(i) for i in result.groups())
+        else:
+            offset, byte = (int(result.groups()[0]), int(result.groups()[0])+4194304)  # 4M
+        total = byte-offset+1
+        if total <= 0 or total > max_value:
+            return None
+        return offset, byte, total
+    else:
+        return None
 
 
 def render(template, **kwargs):

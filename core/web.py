@@ -80,7 +80,7 @@ class HTTPRequest:
 
 
 class Response(object):
-    def __init__(self, content="", code=200, header=None, content_type="text/html"):
+    def __init__(self, content: (bytes, bytearray, str) = "", code=200, header=None, content_type="text/html"):
         if not header:
             header = {}
         self.code = code
@@ -169,9 +169,9 @@ class StreamResponse(Response):
     async def send(self, writer: asyncio.StreamWriter):
         data = self.content
         writer.write(self.build())
-        async for i in data:
+        for i in data:
             if await self.conn_drain(writer.drain):
-                return
+                break
             writer.write(i)
 
 
@@ -229,10 +229,12 @@ class WebHandler(BaseHandler):
     async def post(self):
         return http405()
 
+
 class BaseAuthHandler(WebHandler):
     user = b""
     password = b""
-    realm = "NullcatServer"
+    realm = "Server"
+
     async def run(self) -> Response:
         if "Authorization" not in self.request.head:
             res = Response("401 Unauthorized", code=401)
@@ -241,7 +243,7 @@ class BaseAuthHandler(WebHandler):
             raw = self.request.head.get("Authorization", "")
             typ, content = raw.split(" ", 1)
             if typ != "Basic":
-                return Response(f"Unknown auth method {typ}", codr=400)
+                return Response(f"Unknown auth method {typ}", code=400)
             user, password = base64.b64decode(content).split(b":", 1)
             if user != self.user or password != self.password:
                 res = Response("401 Unauthorized", code=401)
@@ -250,9 +252,11 @@ class BaseAuthHandler(WebHandler):
                 res = await WebHandler.run(self)
         return res
 
+
 class APIHandler(WebHandler):
     code = 200
     header = {}
+
     def _get_new_data(self):
         origin = dir(BaseHandler)
         now = dir(self)
@@ -264,16 +268,16 @@ class APIHandler(WebHandler):
 
     async def run(self) -> Response:
         res = await WebHandler.run(self)
+        assert isinstance(res, (dict, list, tuple, str, int, bytearray, bytes)), "Unknown type: %s" % type(res)
         if not Response:
             return Response(header=self.header, code=204)
-        if isinstance(res, (dict, list)):
+        if isinstance(res, (dict, list, tuple)):
             return Response(content=dumps(res), header=self.header, code=self.code)
-        elif isinstance(res, (str, int, set)):
+        elif isinstance(res, (str, int)):
             return Response(content=str(res), header=self.header, code=self.code)
         elif isinstance(res, (bytes, bytearray)):
             return Response(content=res, header=self.header, code=self.code)
-        else:
-            raise TypeError(f"Unknown type:{type(res)}")
+
 
 class WsHandler(BaseHandler):
     keep_alive = True

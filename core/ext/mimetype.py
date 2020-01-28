@@ -9,6 +9,7 @@ type_dict = {
     "mid":   "audio/midi",
     "ogg":   "audio/ogg",
     "wav":   "audio/wav",
+    "flac":  "audio/x-flac",
     "mp4":   "video/mp4",
     "avi":   "video/avi",
     "ts":    "video/mp2t",

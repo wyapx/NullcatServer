@@ -21,7 +21,7 @@ def get_local_ip(default=""):
 
 def get_best_loop(debug=False):
     if sys.platform == 'win32':
-        loop = asyncio.ProactorEventLoop()  # Windows IOCP loop
+        loop = asyncio.SelectorEventLoop()  # Windows IOCP loop
     elif sys.platform == 'linux':
         if uvloop:
             loop = uvloop.new_event_loop()  # Linux uvloop (thirty part loop)

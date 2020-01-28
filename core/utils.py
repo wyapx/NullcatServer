@@ -5,7 +5,6 @@ import asyncio
 from hashlib import sha1
 from base64 import b64encode
 from typing import Optional, Tuple
-
 from .config import conf
 from .ext.const import work_directory, ws_magic_string
 from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache
@@ -125,10 +124,10 @@ def parse_range(origin, max_value=0) -> Optional[Tuple[int, int, int]]:
         if result.groups()[1]:
             offset, byte = (int(i) for i in result.groups())
         else:
-            offset, byte = (int(result.groups()[0]), int(result.groups()[0])+4194304)  # 4M
+            offset, byte = (int(result.groups()[0]), max_value)  # 4M
         total = byte-offset+1
-        if total <= 0 or total > max_value:
-            return None
+        if byte > max_value:
+            return offset, max_value, max_value-offset+1
         return offset, byte, total
     else:
         return None
@@ -144,3 +143,6 @@ def ws_return_key(key: (str, bytes)) -> bytes:
         return b64encode(sha1(key.encode() + ws_magic_string).digest())
     return b64encode(sha1(key + ws_magic_string).digest())
 
+
+def make_etag(mtime, file_length):
+    return f'"{int(mtime)}-{str(file_length)[-3:]}"'

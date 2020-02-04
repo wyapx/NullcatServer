@@ -2,6 +2,10 @@
 import os
 import sys
 
+def redirect_io(in_io, out_io):
+    sys.stdout = out_io
+    sys.stderr = out_io
+    sys.stdin = in_io
 
 def daemon(pidfile_path=None):
     if hasattr(os, "fork"):
@@ -10,10 +14,7 @@ def daemon(pidfile_path=None):
         else:
             os.umask(0)
             os.setsid()
-            with open(os.devnull, "w") as i, open(os.devnull, "r") as o:
-                os.dup2(sys.stdout.fileno(), i.fileno())
-                os.dup2(sys.stderr.fileno(), i.fileno())
-                os.dup2(sys.stdin.fileno(), o.fileno())
+            redirect_io(open(os.devnull, "r"), open(os.devnull, "w"))
             if pidfile_path:
                 import atexit
                 with open(pidfile_path, "w") as f:

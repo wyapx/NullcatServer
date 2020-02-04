@@ -23,7 +23,7 @@ class Logger:
             self.logger.addHandler(console)
         if conf.get("logger", "save_log"):
             if not os.path.exists(save_path):
-                os.mkdir(save_path, 755)
+                os.mkdir(save_path, 655)
             logName = "server_%s.log" % time.strftime("%y%m%d")
             fHandler = logging.FileHandler(os.path.join(work_directory, save_path, logName))
             fHandler.setFormatter(formatter)

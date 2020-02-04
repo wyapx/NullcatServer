@@ -18,3 +18,14 @@ def get_handler() -> dict:
             )
         result[k] = urls
     return result
+
+
+def url_match(url: str, kv: list) -> (list, None):
+    if not kv:
+        return None
+    realurl = url.split("?")[0]
+    for i in kv:
+        result = i[0].search(realurl)
+        if result:
+            return [i[1], result]
+    return None

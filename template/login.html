@@ -32,35 +32,8 @@
     });
     return false;
 }</script>
-    <style>
-    .app{
-        max-width: 20em;
-    }
-    </style>
 {% endblock %}
-{% block content %}
-    <div class="app app-wrapper">
-        <div class="app-title">
-            <h3>登录</h3>
-        </div>
-        <div class="line"></div>
-        <div class="alert-body alert alert-danger"></div>
-        <form method="post" action="/access/login" enctype="application/x-www-form-urlencoded" onsubmit="return submit_form()">
-            <div class="input-group wrapper">
-                <div class="input-group-prepend">
-                    <span class="input-group-text"><i class="fa fa-user fa-fw" aria-hidden="true"></i></span>
-                </div>
-                <input class="form-control" name="username" placeholder="输入用户名" type="text" required autofocus>
-            </div>
-            <div class="input-group wrapper">
-                <div class="input-group-prepend">
-                    <span class="input-group-text"><i class="fa fa-key fa-fw" aria-hidden="true"></i></span>
-                </div>
-                <input class="form-control" name="password" placeholder="输入密码" type="password" required>
-            </div>
-            <div class="input-group wrapper">
-                <button class="form-control" type="submit" id="submit_button">登录</button>
-            </div>
-        </form>
-    </div>
+{% block body %}
+    <h3 class="title">Hello world</h3>
+    <p>this is an test dx</p>
 {% endblock %}

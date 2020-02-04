@@ -41,7 +41,8 @@ async def rewrite_handler(reader, writer, data):
 async def server(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     ip, port = writer.get_extra_info("peername")[0:2]
     try:
-        header = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), conf.get("server", "request_timeout"))
+        #header = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), conf.get("server", "request_timeout"))
+        header = await reader.readuntil(b"\r\n\r\n")
         await rewrite_handler(reader, writer, (ip, header))
     except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError):
         pass

@@ -4,7 +4,7 @@ import asyncio
 from .logger import main_logger
 from .web import HTTPRequest, http404, HttpServerError, BaseHandler
 from .config import conf
-from .utils import url_match
+from .route import url_match
 
 try:
     import uvloop
@@ -21,7 +21,7 @@ def get_local_ip(default=""):
 
 def get_best_loop(debug=False):
     if sys.platform == 'win32':
-        loop = asyncio.ProactorEventLoop()  # Windows IOCP loop
+        loop = asyncio.SelectorEventLoop()  # Windows IOCP loop
     elif sys.platform == 'linux':
         if uvloop:
             loop = uvloop.new_event_loop()  # Linux uvloop (thirty part loop)
@@ -93,7 +93,7 @@ class FullAsyncServer(object):
                 res = http404()
             if res.code != 101:
                 res.add_header({"Access-Control-Allow-Origin": "*",
-                                "Content-length": res.getLen(),
+                                "Content-Length": res.getLen(),
                                 "Connection": req.head.get("Connection", "close").lower(),
                                 "Server": "NullcatServer"})
                 await res.send(writer)
@@ -101,7 +101,7 @@ class FullAsyncServer(object):
                 await res.send(writer)
                 await obj.loop()
                 req.head["Connection"] = "close"
-            self.log.info(f"{req.method} {req.path}:{res.code} {ip}({self.millis() - start_time}ms)")
+            self.log.info(f"{req.method} {req.path}:{res.code} {req.head.get('Host')} {ip}({self.millis() - start_time}ms)")
             if req.head.get("Connection", "close") == "close":
                 return False
             return True

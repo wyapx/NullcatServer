@@ -14,9 +14,9 @@ if conf.get("database", "is_sqlite"):
 else:
     engine = create_engine(db_url, encoding="utf-8", convert_unicode=True, echo=is_debug)
 if conf.get("database", "use_memcached"):
-    from .memcache import Memcached
+    from memcache import Client
     mem_db_url = conf.get("database", "memcached_url")
     if not mem_db_url:
         raise ValueError("must define memcached_url in config before use memcached")
-    mem_db = Memcached(mem_db_url, debug=is_debug)
+    mem_db = Client([mem_db_url], is_debug)
 DBSession = sessionmaker(bind=engine)

@@ -45,6 +45,13 @@ base_config = {
     }
 }
 
+def dict_sync(source: dict, target: dict):
+    for k, v in source.items():
+        if isinstance(v, dict):
+            dict_sync(v, target[k])
+        else:
+            target[k] = v
+
 class JsonConfigParser:
     def __init__(self, config: dict):
         self.config = config
@@ -52,16 +59,18 @@ class JsonConfigParser:
     def update(self, path):
         if not os.path.exists(path):
             raise FileNotFoundError
-        with open(path, "r") as f:
-            data = f.read()
+        with open(path, "r") as raw:
+            data = raw.read()
         try:
-            self.config.update(
-                json.loads(data)
+            dict_sync(
+                json.loads(data),
+                base_config
             )
         except json.decoder.JSONDecodeError as e:
             print("Error: ConfigFile is not load")
             print("reason:", e)
             exit(0)
+
 
     def get(self, segment, block):
         if segment in self.config:
@@ -71,6 +80,11 @@ class JsonConfigParser:
             raise KeyError(f"block {block} is not exist")
         raise KeyError(f"segment {segment} is not exist")
 
+    def set(self, segment, block, data):
+        if segment in self.config:
+            self.config[segment][block] = data
+        else:
+            raise KeyError(f"block {block} is not exist")
 
 conf = JsonConfigParser(base_config)
 conf_path = os.path.join(work_directory, "config.json")

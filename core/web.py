@@ -1,6 +1,7 @@
 import re
 import base64
 import asyncio
+import jinja2
 import struct
 from .ext.const import *
 from json import dumps
@@ -12,19 +13,30 @@ from urllib.parse import unquote
 database = DBSession()
 
 
+@asyncio.coroutine
+def conn_drain(drain) -> bool:
+    try:
+        yield from drain()
+    except ConnectionError:
+        return True
+    yield  # Fix "socket.send() raised exception." issue
+    return False
+
+
 class HTTPRequest:
     def __init__(self, origin, ip="0.0.0.0"):
         self.body = b""
         self.remote = ip
         self.head = {}
         self.re_args = ()
+        self.body_length = None
         self.GET_data = None
         self.POST_data = None
         info, extra = origin.split(b"\r\n", 1)
         self.method, self.path, self.protocol = re.match(r"(\w{3,7}) (.*) HTTP/(\d\.\d)", info.decode()).groups()
-        for kv in extra[:-4].decode().split("\r\n"):
+        for kv in extra[:-4].decode().splitlines():
             k, v = kv.split(": ", 1)
-            self.head[k] = v
+            self.head[k.title()] = v
 
     @property
     def GET(self) -> dict:
@@ -76,7 +88,7 @@ class HTTPRequest:
         return kv
 
     def __repr__(self) -> str:
-        return f'Request(method="{self.method}", path="{self.path}", protocol="{self.protocol}")'
+        return 'Request(method="{0}", path="{1}", protocol="{2}")'.format(self.method, self.path, self.protocol)
 
 
 class Response(object):
@@ -137,7 +149,7 @@ class Response(object):
     async def send(self, writer: asyncio.StreamWriter):
         data = self.build()
         writer.write(data)
-        await self.conn_drain(writer.drain)
+        await conn_drain(writer.drain)
         if isinstance(self.content, File):
             writer.write(self.content.full_read())
         else:
@@ -145,16 +157,6 @@ class Response(object):
 
     def __repr__(self):
         return f"<Response code={self.code} header={self.header}>"
-
-    @staticmethod
-    @asyncio.coroutine
-    def conn_drain(drain) -> bool:
-        try:
-            yield from drain()
-        except ConnectionError:
-            return True
-        yield  # Fix "socket.send() raised exception." issue
-        return False
 
 
 class StreamResponse(Response):
@@ -169,9 +171,9 @@ class StreamResponse(Response):
     async def send(self, writer: asyncio.StreamWriter):
         data = self.content
         writer.write(self.build())
-        async for i in data:
-            if await self.conn_drain(writer.drain):
-                return
+        for i in data:
+            if await conn_drain(writer.drain):
+                break
             writer.write(i)
 
 
@@ -194,8 +196,11 @@ class FileResponse(Response):
 
 class HtmlResponse(Response):
     def __init__(self, template_name, header=None, **kwargs):
-        content = render(template_name, **kwargs)
-        Response.__init__(self, content, header=header, content_type="text/html charset=utf-8")
+        try:
+            content = render(template_name, **kwargs)
+        except jinja2.exceptions.TemplateNotFound:
+            content = "<h3>500: Template Not Found</h3>"
+        Response.__init__(self, content, header=header, content_type="text/html; charset=utf-8")
 
 
 class BaseHandler:
@@ -229,10 +234,12 @@ class WebHandler(BaseHandler):
     async def post(self):
         return http405()
 
+
 class BaseAuthHandler(WebHandler):
     user = b""
     password = b""
-    realm = "NullcatServer"
+    realm = "Server"
+
     async def run(self) -> Response:
         if "Authorization" not in self.request.head:
             res = Response("401 Unauthorized", code=401)
@@ -241,7 +248,7 @@ class BaseAuthHandler(WebHandler):
             raw = self.request.head.get("Authorization", "")
             typ, content = raw.split(" ", 1)
             if typ != "Basic":
-                return Response(f"Unknown auth method {typ}", codr=400)
+                return Response(f"Unknown auth method {typ}", code=400)
             user, password = base64.b64decode(content).split(b":", 1)
             if user != self.user or password != self.password:
                 res = Response("401 Unauthorized", code=401)
@@ -250,9 +257,11 @@ class BaseAuthHandler(WebHandler):
                 res = await WebHandler.run(self)
         return res
 
+
 class APIHandler(WebHandler):
     code = 200
     header = {}
+
     def _get_new_data(self):
         origin = dir(BaseHandler)
         now = dir(self)
@@ -264,16 +273,18 @@ class APIHandler(WebHandler):
 
     async def run(self) -> Response:
         res = await WebHandler.run(self)
+        if isinstance(res, Response):
+            return res
+        assert isinstance(res, (dict, list, tuple, str, int, bytearray, bytes)), "Unknown type: %s" % type(res)
         if not Response:
             return Response(header=self.header, code=204)
-        if isinstance(res, (dict, list)):
+        if isinstance(res, (dict, list, tuple)):
             return Response(content=dumps(res), header=self.header, code=self.code)
-        elif isinstance(res, (str, int, set)):
+        elif isinstance(res, (str, int)):
             return Response(content=str(res), header=self.header, code=self.code)
         elif isinstance(res, (bytes, bytearray)):
             return Response(content=res, header=self.header, code=self.code)
-        else:
-            raise TypeError(f"Unknown type:{type(res)}")
+
 
 class WsHandler(BaseHandler):
     keep_alive = True
@@ -282,7 +293,7 @@ class WsHandler(BaseHandler):
         if self.request.head.get("Upgrade") != "websocket":
             return http405()
         key = self.request.head.get("Sec-WebSocket-Key", "")
-        if len(key) != 24:  # 16 bytes fixed
+        if len(key) != 24:  # 24 bytes fixed
             return http400()
         res = Response(code=101)
         res.add_header({"Connection": "Upgrade",
@@ -323,7 +334,7 @@ class WsHandler(BaseHandler):
             i += 1
         return message_bytes, opcode
 
-    def send_text(self, message: (str, bytes, bytearray), opcode=OPCODE_TEXT):
+    def send_text(self, message, opcode=OPCODE_TEXT):
         """
         Important: Fragmented(=continuation) messages are not supported since
         their usage cases are limited - when we don't know the payload length.
@@ -409,11 +420,11 @@ def http204():
     return Response(code=204)
 
 
-def http404(message="404 Not Found"):
+def http404(message=PAGE_404):
     return Response(message, 404)
 
 
-def http400(message="400 Client Error"):
+def http400(message=PAGE_400):
     return Response(message, 400)
 
 
@@ -427,13 +438,13 @@ def http304():
     return Response(code=304)
 
 
-def http403(message="Access denied"):
+def http403(message=PAGE_403):
     return Response(message, 403)
 
 
-def http405(message="405 Method Not Allow"):
+def http405(message=PAGE_405):
     return Response(message, 405)
 
 
-def HttpServerError(message="500 Internet Server Error"):
+def HttpServerError(message=PAGE_500):
     return Response(message, 500)

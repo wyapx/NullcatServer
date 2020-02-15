@@ -5,9 +5,10 @@ import asyncio
 from hashlib import sha1
 from base64 import b64encode
 from typing import Optional, Tuple
+from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache
+from .errors import UnknownTypeError, TooBigEntityError
 from .config import conf
 from .ext.const import work_directory, ws_magic_string
-from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache
 
 template_path = conf.get("template", "template_path")
 cache_path = conf.get("template", "cache_path")
@@ -21,6 +22,83 @@ if conf.get("template", "use_fs_cache"):
 else:
     bc_cache = None
 env = Environment(loader=loader, bytecode_cache=bc_cache, enable_async=False)
+
+
+# "--" + self.bound + "\r\n" + http_like_data + "\r\n"
+class PostDataManager:
+    def __init__(self, request, reader: asyncio.StreamReader, buf_size=16384, limit=10485760):  # 10M
+        if request.body_length > limit:
+            raise TooBigEntityError(
+                "Max size is %d, but %d got" % (limit, request.body_length)
+            )
+        self.reader = reader
+        self.request = request
+        self.buf_size = buf_size
+        self.max_size = limit
+        self.bound = b""
+
+    async def _read(self):
+        return await self.reader.read(min(self.buf_size, self.request.body_length))
+
+    async def multipart(self):
+        buf = bytearray()
+        while True:
+            if not buf:
+                buf = await self._read()
+                if not buf:
+                    return
+                self.request.body_length -= len(buf)
+                continue
+            cursor = buf.find(self.bound)+len(self.bound)
+            if cursor >= len(self.bound):
+                if buf[cursor: cursor+2] == b"--":
+                    yield buf[:buf.find(self.bound)]  # data body
+                    buf = bytearray()
+                elif buf[cursor: cursor+2] == b"\r\n":
+                    head, buf = buf[cursor+2:].split(b"\r\n\r\n", 1)
+                    result = {}
+                    for l in head.split(b"\r\n"):
+                        if not l:
+                            break
+                        k, v = l.decode().split(": ", 1)
+                        result[k] = v
+                    yield result
+                else:
+                    buf = buf[buf.find(self.bound):]
+                    yield buf[:buf.find(self.bound)]  # data body
+            else:
+                yield buf
+                buf = bytearray()
+
+    async def urlencode(self):
+        buf = bytearray()
+        result = {}
+        while True:
+            if self.request.body_length:
+                buf += await self._read()
+            else:
+                break
+        for l in buf.split(b"&"):
+            try:
+                k, v = l.split(b"=")
+            except ValueError:
+                continue
+            result[k] = v
+        return result
+
+    def handle(self):
+        content_type = self.request.head.get("Content-Type", "").split("; ")
+        if content_type[0] == "multipart/form-data":
+            for seg in content_type[1:]:
+                k, v = seg.split("=")
+                if k == "boundary":
+                    self.bound = b"--"+v.encode()
+            return self.multipart()
+        elif content_type[1] == "application/x-www-form-urlencoded":
+            return self.urlencode()
+        else:
+            raise UnknownTypeError(content_type)
+
 
 class File(object):
     def __init__(self, path, buf_size=65535):

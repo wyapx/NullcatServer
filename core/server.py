@@ -1,8 +1,9 @@
 import sys
 import socket
 import asyncio
+from aiohttp import ClientError
 from .logger import main_logger
-from .web import HTTPRequest, http404, HttpServerError, BaseHandler
+from .web import HTTPRequest, http404, HttpServerError, http400
 from .config import conf
 from .route import url_match
 
@@ -77,15 +78,15 @@ class FullAsyncServer(object):
                 self.log.warning(("Origin data: ", header))
                 return False
             pattern = self.handler.get(req.head.get("Host", "*"), self.handler.get("*", []))
-            length = req.head.get("Content-Length")
-            if length:
-                req.body = await reader.read(int(length))
             match = url_match(req.path, pattern)
+            obj = None
             if match:
                 req.re_args = match[1].groups()
                 try:
-                    obj: BaseHandler = match[0](req, reader, writer)
+                    obj = match[0](req, reader, writer)
                     res = await obj.run()
+                except ClientError:
+                    res = http400()
                 except Exception:
                     self.log.exception("Handler Error:")
                     res = HttpServerError()
@@ -96,9 +97,8 @@ class FullAsyncServer(object):
                                 "Content-Length": res.getLen(),
                                 "Connection": req.head.get("Connection", "close").lower(),
                                 "Server": "NullcatServer"})
-                await res.send(writer)
-            else:
-                await res.send(writer)
+            await res.send(writer)
+            if obj:
                 await obj.loop()
                 req.head["Connection"] = "close"
             self.log.info(f"{req.method} {req.path}:{res.code} {req.head.get('Host')} {ip}({self.millis() - start_time}ms)")

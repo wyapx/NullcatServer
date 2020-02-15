@@ -20,7 +20,7 @@ if __name__ == "__main__":
         conf.set("server", "loop_debug", True)
         conf.set("logger", "save_log", False)
         conf.set("http", "rewrite_only", False)
-    if args.log != None:
+    if args.log is not None:
         conf.set("logger", "level", args.log)
     if conf.get("server", "daemon") or args.daemon:
         from core.ext import daemon

@@ -1,6 +1,6 @@
 import os
 from core.server import FullAsyncServer
-from core.utils import get_handler
+from core.helpers import get_handler
 
 try:
     from watchdog.events import FileSystemEventHandler

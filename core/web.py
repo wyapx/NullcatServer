@@ -3,14 +3,16 @@ import base64
 import asyncio
 import jinja2
 import struct
-from .ext.const import *
 from json import dumps
 from time import time
-from .utils import timestamp_toCookie, File, ws_return_key, render
-from .db import DBSession
 from urllib.parse import unquote
+from warnings import warn
+from .ext.const import *
+from .helpers import timestamp_toCookie, File, ws_return_key, render
+from .db import DBSession
 
 database = DBSession()
+ws_connection = {"default": []}  # WebSocket连接组储存
 
 
 @asyncio.coroutine
@@ -29,19 +31,15 @@ class HTTPRequest:
         self.remote = ip
         self.head = {}
         self.re_args = ()
-        self.body_length = None
-        self.GET_data = None
-        self.POST_data = None
         info, extra = origin.split(b"\r\n", 1)
         self.method, self.path, self.protocol = re.match(r"(\w{3,7}) (.*) HTTP/(\d\.\d)", info.decode()).groups()
         for kv in extra[:-4].decode().splitlines():
             k, v = kv.split(": ", 1)
             self.head[k.title()] = v
+        self.body_length = int(self.head.get("Content-Length", "0"))
 
     @property
     def GET(self) -> dict:
-        if self.GET_data:
-            return self.GET_data
         if self.path.find("?") == -1:
             return {}
         data = self.path.split("?", 1)[1]
@@ -60,8 +58,6 @@ class HTTPRequest:
 
     @property
     def POST(self) -> dict:
-        if not self.body:
-            return {}
         try:
             block = self.body.split(b"&")
         except IndexError:
@@ -92,7 +88,7 @@ class HTTPRequest:
 
 
 class Response(object):
-    def __init__(self, content="", code=200, header=None, content_type="text/html"):
+    def __init__(self, content=None, code=200, header=None, content_type="text/html"):
         if not header:
             header = {}
         self.code = code
@@ -100,12 +96,13 @@ class Response(object):
         self.header = {"Content-Type": content_type, **header}
         if isinstance(content, str):
             self.content = content.encode()
-            self.length = len(self.content)
         elif isinstance(content, (bytes, bytearray, File)):
             self.content = content
-            self.length = len(self.content)
+        elif not content:
+            self.content = b""
         else:
             raise ValueError(f"Wrong type {type(content)}")
+        self.length = len(self.content)
 
     def set_content(self, content):
         self.content = content
@@ -119,10 +116,12 @@ class Response(object):
         self.header.update(header)
 
     def set_cookie(self, name, value, expire=3600, **kwargs):
+        if value > 4095:
+            raise RuntimeWarning()
         result = f"{name}={value}; expires={timestamp_toCookie(time() + expire)};"
         for k, v in kwargs.items():
             if k and v:
-                result += f" {k}={v};"
+                result += f' {k.replace("_", "-")}={v};'
             elif k:
                 result += f" {k};"
         self.header["Set-Cookie"] = result
@@ -235,7 +234,7 @@ class WebHandler(BaseHandler):
         return http405()
 
 
-class BaseAuthHandler(WebHandler):
+class BasicAuthHandler(WebHandler):
     user = b""
     password = b""
     realm = "Server"
@@ -292,8 +291,9 @@ class WsHandler(BaseHandler):
     async def run(self) -> Response:
         if self.request.head.get("Upgrade") != "websocket":
             return http405()
-        key = self.request.head.get("Sec-WebSocket-Key", "")
+        key = self.request.head.get("Sec-Websocket-Key", "")
         if len(key) != 24:  # 24 bytes fixed
+            print(len(key), "dd")
             return http400()
         res = Response(code=101)
         res.add_header({"Connection": "Upgrade",
@@ -334,7 +334,7 @@ class WsHandler(BaseHandler):
             i += 1
         return message_bytes, opcode
 
-    def send_text(self, message, opcode=OPCODE_TEXT):
+    def send(self, message, opcode=OPCODE_TEXT):
         """
         Important: Fragmented(=continuation) messages are not supported since
         their usage cases are limited - when we don't know the payload length.
@@ -370,15 +370,15 @@ class WsHandler(BaseHandler):
         self.writer.write(header + payload)
 
     def close_connection(self, message="Connection close"):
-        self.send_text(message, opcode=OPCODE_CLOSE_CONN)
+        self.send(message, opcode=OPCODE_CLOSE_CONN)
         self.keep_alive = False
 
     async def write(self, data):
-        self.send_text(data)
+        self.send(data)
         await self.writer.drain()
 
     def write_nowait(self, data):
-        self.send_text(data)
+        self.send(data)
 
     async def loop(self):
         try:
@@ -395,9 +395,9 @@ class WsHandler(BaseHandler):
                     await self.onClose()
                 else:
                     if not opcode:
-                        self.send_text("", opcode=OPCODE_PING)
+                        self.send("", opcode=OPCODE_PING)
                         continue
-                    print("Unhandle opcode:", opcode)
+                    print("Unknown opcode:", opcode)
                     self.close_connection()
         except ConnectionError as e:
             print(e)
@@ -410,11 +410,57 @@ class WsHandler(BaseHandler):
         pass
 
     async def onPing(self):
-        self.send_text("", OPCODE_PONG)
+        self.send("", OPCODE_PONG)
 
     async def onClose(self):
         self.close_connection()
 
+
+class WsGroupHandler(WsHandler):
+    group = "default"
+
+    @staticmethod
+    def _init_new_group(name: str):
+        ws_connection[name] = []
+
+    @staticmethod
+    def group_list() -> list:
+        return list(ws_connection.keys())
+
+    @staticmethod
+    def broadcast(data):
+        for group in ws_connection.values():
+            for send_text in group:
+                send_text(data)
+
+    def change_group(self, target_group: str):
+        self.remove_conn()
+        self.add_conn(target_group)
+        self.group = target_group
+
+    def add_conn(self, group=None):
+        if not group:
+            group = self.group
+        if group not in ws_connection:
+            self._init_new_group(group)
+        if group not in ws_connection[group]:
+            ws_connection[group].append(self.send)
+
+    def remove_conn(self):
+        if self.send in ws_connection[self.group]:
+            ws_connection[self.group].remove(self.send)
+            if not ws_connection[self.group] and self.group != "default":
+                ws_connection.pop(self.group)
+
+    def emit(self, data):
+        if self.group not in ws_connection:
+            raise AttributeError("Group %s not found" % self.group)
+        for send_text in ws_connection.get(self.group):
+            send_text(data)
+
+    async def onClose(self):
+        self.remove_conn()
+        self.close_connection()
 
 def http204():
     return Response(code=204)

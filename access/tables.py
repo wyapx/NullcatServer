@@ -16,11 +16,3 @@ class Session(Base):
     sessionid = Column(String(50), index=True, nullable=False)
     name = Column(String(20))
     expire = Column(Integer)
-
-
-class BlackList(Base):
-    __tablename__ = "blacklist"
-    id = Column(Integer, primary_key=True)
-    ip = Column(String(15), index=True, nullable=False)
-    path = Column(String(256), nullable=True)
-    reason = Column(String(512), nullable=True)

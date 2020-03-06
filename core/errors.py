@@ -1,8 +1,8 @@
-class ClientException(Exception):
+class ClientException(ValueError):
     pass
 
 
-class UnknownTypeError(ClientException, ValueError):
+class UnknownTypeError(ClientException):
     pass
 
 

@@ -25,7 +25,6 @@ base_config = {
         "key_path": ""
     },
     "database": {
-        "is_sqlite": True,
         "database_url": "sqlite:///database.db",
         "use_memcached": False,
         "memcached_url": "",
@@ -45,12 +44,14 @@ base_config = {
     }
 }
 
+
 def dict_sync(source: dict, target: dict):
     for k, v in source.items():
         if isinstance(v, dict):
             dict_sync(v, target[k])
         else:
             target[k] = v
+
 
 class JsonConfigParser:
     def __init__(self, config: dict):
@@ -71,7 +72,6 @@ class JsonConfigParser:
             print("reason:", e)
             exit(0)
 
-
     def get(self, segment, block):
         if segment in self.config:
             result = self.config[segment]
@@ -85,6 +85,7 @@ class JsonConfigParser:
             self.config[segment][block] = data
         else:
             raise KeyError(f"block {block} is not exist")
+
 
 conf = JsonConfigParser(base_config)
 conf_path = os.path.join(work_directory, "config.json")

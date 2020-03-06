@@ -9,8 +9,9 @@ is_debug = conf.get("database", "debug")
 mem_db = None
 
 Base = declarative_base()
-if conf.get("database", "is_sqlite"):
-    engine = create_engine(db_url, poolclass=SingletonThreadPool, connect_args={"check_same_thread": False}, echo=is_debug)
+if db_url.find("sqlite") == 0:
+    engine = create_engine(db_url, poolclass=SingletonThreadPool, echo=is_debug,
+                           connect_args={"check_same_thread": False})
 else:
     engine = create_engine(db_url, encoding="utf-8", convert_unicode=True, echo=is_debug)
 if conf.get("database", "use_memcached"):

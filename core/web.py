@@ -462,6 +462,7 @@ class WsGroupHandler(WsHandler):
         self.remove_conn()
         self.close_connection()
 
+
 def http204():
     return Response(code=204)
 

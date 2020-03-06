@@ -2,6 +2,7 @@ import os
 import re
 import time
 import asyncio
+from functools import partial
 from hashlib import sha1
 from base64 import b64encode
 from typing import Optional, Tuple
@@ -213,3 +214,7 @@ def ws_return_key(key) -> bytes:
 
 def make_etag(mtime, file_length):
     return f'"{int(mtime)}-{str(file_length)[-3:]}"'
+
+
+def call_later(delay, callback, *args, **kwargs):
+    return asyncio.get_event_loop().call_later(delay, partial(callback, *args, **kwargs))

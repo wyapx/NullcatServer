@@ -1,5 +1,4 @@
 import os
-#os.chdir(os.path.abspath(__file__)[:5])
 import sys
 import argparse
 from core.config import conf
@@ -27,9 +26,10 @@ if __name__ == "__main__":
         daemon.daemon("server.pid")
     from core.route import get_handler
     from core.server import FullAsyncServer
-    handler = get_handler()
     try:
-        FullAsyncServer(handler=handler).run()
+        FullAsyncServer(
+            handler=get_handler()
+        ).run()
     except OSError as e:
         print(e)
     exit(0)

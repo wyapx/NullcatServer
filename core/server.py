@@ -1,9 +1,8 @@
 import sys
 import socket
 import asyncio
-from aiohttp import ClientError
 from .logger import main_logger
-from .web import HTTPRequest, http404, HttpServerError, http400
+from .web import HTTPRequest, http404, HttpServerError
 from .config import conf
 from .route import url_match
 
@@ -85,23 +84,21 @@ class FullAsyncServer(object):
                 try:
                     obj = match[0](req, reader, writer)
                     res = await obj.run()
-                except ClientError:
-                    res = http400()
                 except Exception:
                     self.log.exception("Handler Error:")
                     res = HttpServerError()
             else:
                 res = http404()
             if res.code != 101:
-                res.add_header({"Access-Control-Allow-Origin": "*",
-                                "Content-Length": res.getLen(),
+                res.add_header({"Content-Length": res.getLen(),
                                 "Connection": req.head.get("Connection", "close").lower(),
-                                "Server": "NullcatServer"})
+                                "Server": "nginx"})
             await res.send(writer)
             if obj:
                 await obj.loop()
                 req.head["Connection"] = "close"
-            self.log.info(f"{req.method} {req.path}:{res.code} {req.head.get('Host')} {ip}({self.millis() - start_time}ms)")
+            self.log.info(f"{req.method} {req.path}:{res.code} {req.head.get('Host')} {ip}"
+                          f"({self.millis()-start_time}ms)")
             if req.head.get("Connection", "close") == "close":
                 return False
             return True
@@ -122,7 +119,7 @@ class FullAsyncServer(object):
         self.log.debug(f"[{ip}:{port}]: connect lost")
 
     def signal_handler(self, sig):
-        self.log.warning(f"Got signal {sig}, closing...")
+        self.log.warning(f"Got signal {sig}, stopping...")
         self.loop.stop()
         
     def run(self):

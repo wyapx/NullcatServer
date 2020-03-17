@@ -12,8 +12,11 @@ parser.add_argument("-r", "--reload", action="store_true", help="restart server(
 if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
     if args.reload:
-        with open("server.pid", "r") as f:
-            os.kill(int(f.read()), 15)  # SIGTERM
+        if os.path.isfile("server.pid"):
+            with open("server.pid", "r") as f:
+                os.kill(int(f.read()), 15)  # SIGTERM
+        else:
+            print("no pid file, pass")
     if args.develop:
         conf.set("server", "daemon", False)
         conf.set("server", "loop_debug", True)
@@ -21,15 +24,15 @@ if __name__ == "__main__":
         conf.set("http", "rewrite_only", False)
     if args.log is not None:
         conf.set("logger", "level", args.log)
-    if conf.get("server", "daemon") or args.daemon:
-        from core.ext import daemon
-        daemon.daemon("server.pid")
     from core.route import get_handler
     from core.server import FullAsyncServer
+    if conf.get("server", "daemon") or args.daemon:
+        from core.ext import daemon
+
+        daemon.daemon("server.pid")
     try:
         FullAsyncServer(
             handler=get_handler()
         ).run()
     except OSError as e:
         print(e)
-    exit(0)

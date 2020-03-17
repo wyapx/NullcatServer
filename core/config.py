@@ -1,8 +1,7 @@
 import os
 import json
-from .ext.const import work_directory
 
-
+conf_path = "config.json"
 base_config = {
     "server": {
         "request_timeout": 10,
@@ -45,25 +44,24 @@ base_config = {
 }
 
 
-def dict_sync(source: dict, target: dict):
-    for k, v in source.items():
-        if isinstance(v, dict):
-            dict_sync(v, target[k])
-        else:
-            target[k] = v
-
-
 class JsonConfigParser:
     def __init__(self, config: dict):
         self.config = config
-    
+
+    def _dict_sync(self, source: dict, target: dict):
+        for k, v in source.items():
+            if isinstance(v, dict):
+                self._dict_sync(v, target[k])
+            else:
+                target[k] = v
+
     def update(self, path):
         if not os.path.exists(path):
             raise FileNotFoundError
         with open(path, "r") as raw:
             data = raw.read()
         try:
-            dict_sync(
+            self._dict_sync(
                 json.loads(data),
                 base_config
             )
@@ -72,27 +70,38 @@ class JsonConfigParser:
             print("reason:", e)
             exit(0)
 
-    def get(self, segment, block):
+    def get(self, segment: str, block=None):
         if segment in self.config:
             result = self.config[segment]
-            if block in result:
+            if not block:
+                return result
+            elif block in result:
                 return result[block]
             raise KeyError(f"block {block} is not exist")
         raise KeyError(f"segment {segment} is not exist")
 
-    def set(self, segment, block, data):
+    def sets(self, segment: str, data: dict):
+        if segment not in self.config:
+            raise KeyError(f"segment {segment} is not exist")
+        for k, v in data.items():
+            self.config[segment][k] = v
+
+    def set(self, segment: str, block, data):
         if segment in self.config:
             self.config[segment][block] = data
         else:
             raise KeyError(f"block {block} is not exist")
 
+    def save(self, path=conf_path):
+        with open(path, "w") as f:
+            f.write(
+                json.dumps(self.config, indent=2)
+            )
+
 
 conf = JsonConfigParser(base_config)
-conf_path = os.path.join(work_directory, "config.json")
 if not os.path.exists(conf_path):
     print(f"Warning: {conf_path} not found, regenerating...")
-    with open(conf_path, "w") as f:
-        f.write(
-           json.dumps(base_config, indent=2)
-        )
-conf.update(conf_path)
+    conf.save()
+else:
+    conf.update(conf_path)

@@ -34,7 +34,7 @@ class StaticHandler(WebHandler):
                     res.setLen(total)
                 else:
                     res.add_header({"Accept-Ranges": "bytes",
-                                    "Cache-Control": "public, max-age=43200",
+                                    "Cache-Control": "cache-control: max-age=300, immutable",
                                     "Last-Modified": mtime,
                                     "Etag": make_etag(f.mtime(), f.size)})
             return res

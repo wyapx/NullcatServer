@@ -6,6 +6,7 @@ from functools import partial
 from hashlib import sha1
 from base64 import b64encode
 from typing import Optional, Tuple
+
 from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache
 from .errors import UnknownTypeError, TooBigEntityError
 from .config import conf
@@ -50,13 +51,13 @@ class PostDataManager:
                     return
                 self.request.body_length -= len(buf)
                 continue
-            cursor = buf.find(self.bound)+len(self.bound)
+            cursor = buf.find(self.bound) + len(self.bound)
             if cursor >= len(self.bound):
-                if buf[cursor: cursor+2] == b"--":
+                if buf[cursor: cursor + 2] == b"--":
                     yield buf[:buf.find(self.bound)]  # data body
                     buf = bytearray()
-                elif buf[cursor: cursor+2] == b"\r\n":
-                    head, buf = buf[cursor+2:].split(b"\r\n\r\n", 1)
+                elif buf[cursor: cursor + 2] == b"\r\n":
+                    head, buf = buf[cursor + 2:].split(b"\r\n\r\n", 1)
                     result = {}
                     for l in head.split(b"\r\n"):
                         if not l:
@@ -93,12 +94,30 @@ class PostDataManager:
             for seg in content_type[1:]:
                 k, v = seg.split("=")
                 if k == "boundary":
-                    self.bound = b"--"+v.encode()
+                    self.bound = b"--" + v.encode()
             return self.multipart()
         elif content_type[1] == "application/x-www-form-urlencoded":
             return self.urlencode()
         else:
             raise UnknownTypeError(content_type)
+
+
+class Bio:
+    def __init__(self, data: bytes, buf=32768):
+        self.data = bytearray(data)
+        self.buf = buf
+
+    def __len__(self):
+        return len(self.data)
+
+    def __iter__(self):
+        count = 0
+        while True:
+            if len(self.data) > count * self.buf:
+                yield self.data[count * self.buf:(count + 1) * self.buf]
+            elif len(self.data) < count * self.buf:
+                return self.data[count * self.buf:]
+            count += 1
 
 
 class File(object):
@@ -132,7 +151,7 @@ class File(object):
         if offset < 0:
             raise ValueError
         elif offset + size >= self.size:
-            size = self.size-offset
+            size = self.size - offset
         self.offset = offset
         self.chunk_size = size
 
@@ -193,9 +212,9 @@ def parse_range(origin, max_value=0) -> Optional[Tuple[int, int, int]]:
             offset, byte = (int(i) for i in result.groups())
         else:
             offset, byte = (int(result.groups()[0]), max_value)  # 4M
-        total = byte-offset+1
+        total = byte - offset + 1
         if byte > max_value:
-            return offset, max_value, max_value-offset+1
+            return offset, max_value, max_value - offset + 1
         return offset, byte, total
     else:
         return None
@@ -216,5 +235,16 @@ def make_etag(mtime, file_length):
     return f'"{int(mtime)}-{str(file_length)[-3:]}"'
 
 
+def run_with_wrapper(func, *args, **kwargs):
+    exe = func(*args, **kwargs)
+    if asyncio.iscoroutine(exe):
+        asyncio.ensure_future(exe)
+
+
+def interval(delay, func, *args, **kwargs):
+    run_with_wrapper(func, *args, **kwargs)
+    asyncio.get_event_loop().call_later(delay, partial(interval, delay, func, *args, **kwargs))
+
+
 def call_later(delay, callback, *args, **kwargs):
-    return asyncio.get_event_loop().call_later(delay, partial(callback, *args, **kwargs))
+    return asyncio.get_event_loop().call_later(delay, partial(run_with_wrapper, callback, *args, **kwargs))

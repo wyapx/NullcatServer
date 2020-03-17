@@ -40,8 +40,8 @@ PAGE_TEMPLATE = """
     <title>{message}</title>
 </head>
 <body>
-<h3 style="align-content:center">{code} {message}</h3>
-<p style="align-content:center">{detail}</p>
+<h3>{code} {message}</h3>
+<p>{detail}</p>
 </body>
 </html>
 """

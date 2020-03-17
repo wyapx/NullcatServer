@@ -3,13 +3,15 @@ import base64
 import asyncio
 import jinja2
 import struct
-from json import dumps
 from time import time
 from urllib.parse import unquote
-from warnings import warn
 from .ext.const import *
-from .helpers import timestamp_toCookie, File, ws_return_key, render
+from .helpers import timestamp_toCookie, File, ws_return_key, render, Bio
 from .db import DBSession
+try:
+    from ujson import dumps
+except ImportError:
+    from json import dumps
 
 database = DBSession()
 ws_connection = {"default": []}  # WebSocket连接组储存
@@ -88,6 +90,10 @@ class HTTPRequest:
 
 
 class Response(object):
+    """
+    警告：不要使用这个类发送过大的请求
+    在慢速连接中可能会导致连接断开
+    """
     def __init__(self, content=None, code=200, header=None, content_type="text/html"):
         if not header:
             header = {}
@@ -96,7 +102,7 @@ class Response(object):
         self.header = {"Content-Type": content_type, **header}
         if isinstance(content, str):
             self.content = content.encode()
-        elif isinstance(content, (bytes, bytearray, File)):
+        elif isinstance(content, (bytes, bytearray, File, Bio)):
             self.content = content
         elif not content:
             self.content = b""
@@ -153,6 +159,7 @@ class Response(object):
             writer.write(self.content.full_read())
         else:
             writer.write(self.content)
+        await conn_drain(writer.drain)
 
     def __repr__(self):
         return f"<Response code={self.code} header={self.header}>"
@@ -293,7 +300,6 @@ class WsHandler(BaseHandler):
             return http405()
         key = self.request.head.get("Sec-Websocket-Key", "")
         if len(key) != 24:  # 24 bytes fixed
-            print(len(key), "dd")
             return http400()
         res = Response(code=101)
         res.add_header({"Connection": "Upgrade",

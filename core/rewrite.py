@@ -8,6 +8,8 @@ target_port = conf.get("https", "port")
 
 class Redirect_Handler(WebHandler):
     async def get(self):
+        if self.request.head.get("X-Local"):
+            return http301(self.request.head.get("X-Local"))
         host = self.request.head.get("Host")
         if not host:
             log.warning(f"GET {self.request.path}: Host not found(from {self.request.remote})")
@@ -15,11 +17,7 @@ class Redirect_Handler(WebHandler):
         return http301(f"https://{host.split(':')[0]}:{target_port}{self.request.path}")
 
     async def post(self):
-        host = self.request.head.get("Host")
-        if not host:
-            log.warning(f"POST {self.request.path}: Host not found(from {self.request.remote})")
-            host = "127.0.0.1"
-        return http301(f"https://{host.split(':')[0]}:{target_port}{self.request.path}")
+        return await self.get()
 
 
 async def rewrite_handler(reader, writer, data):

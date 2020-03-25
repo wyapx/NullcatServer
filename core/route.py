@@ -11,11 +11,14 @@ def path(p_url: str, target: object) -> tuple:
 def get_handler() -> dict:
     result = {}
     for k, v in conf.get("server", "handler").items():
-        urls = []
-        for module_path in v:
-            urls.extend(
-                importlib.import_module(module_path).pattern
-            )
+        if isinstance(v, str):
+            urls = v
+        else:
+            urls = []
+            for module_path in v:
+                urls.extend(
+                    importlib.import_module(module_path).pattern
+                )
         result[k] = urls
     return result
 

@@ -33,4 +33,5 @@ class Logger:
     def get_logger(self):
         return self.logger
 
+
 main_logger = Logger()

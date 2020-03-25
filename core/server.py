@@ -5,6 +5,7 @@ from .logger import main_logger
 from .web import HTTPRequest, http404, HttpServerError
 from .config import conf
 from .route import url_match
+from .rewrite import Redirect_Handler
 
 try:
     import uvloop
@@ -77,6 +78,13 @@ class FullAsyncServer(object):
                 self.log.warning(("Origin data: ", header))
                 return False
             pattern = self.handler.get(req.head.get("Host", "*"), self.handler.get("*", []))
+            if isinstance(pattern, str):
+                req.head["X-Local"] = pattern
+                sender = await Redirect_Handler(req, reader, writer).run()
+                sender.add_header({"Connection": "close"})
+                await sender.send(writer)
+                self.log.info(f"{req.method} {req.head.get('Host')}:{req.path} {req.remote} Redirect")
+                return False
             match = url_match(req.path, pattern)
             obj = None
             if match:

@@ -7,12 +7,12 @@ from core.web import http403
 
 database = DBSession()
 
-def encrypt_passwd(password): 
+def encrypt_passwd(password: (str, bytes)) -> bytes:
     if isinstance(password, str): 
-        password = password.encode()
+        return sha3_512(password.encode()).hexdigest()
     return sha3_512(password).hexdigest()
 
-def check_login_info(username, passwd) -> int:
+def check_login_info(username, passwd) -> bool:
     user = database.query(User.password).filter(User.name == username).one_or_none()
     if user:
         if user[0] == encrypt_passwd(passwd):

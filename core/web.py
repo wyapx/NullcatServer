@@ -5,6 +5,7 @@ import jinja2
 import struct
 from time import time
 from urllib.parse import unquote
+from typing import Iterable
 from .ext.const import *
 from .helpers import timestamp_toCookie, File, ws_return_key, render, Bio
 from .db import DBSession
@@ -28,7 +29,7 @@ def conn_drain(drain) -> bool:
 
 
 class HTTPRequest:
-    def __init__(self, origin, ip="0.0.0.0"):
+    def __init__(self, origin, ip=None):
         self.body = b""
         self.remote = ip
         self.head = {}
@@ -110,11 +111,11 @@ class Response(object):
             raise ValueError(f"Wrong type {type(content)}")
         self.length = len(self.content)
 
-    def set_content(self, content):
+    def set_content(self, content: bytes):
         self.content = content
         return self
 
-    def status(self, code, protocol="HTTP/1.1"):
+    def status(self, code: int, protocol="HTTP/1.1"):
         self.code = code
         self.protocol = protocol
 
@@ -166,7 +167,7 @@ class Response(object):
 
 
 class StreamResponse(Response):
-    def setLen(self, length):
+    def setLen(self, length: int):
         self.length = length
 
     def getLen(self) -> int:
@@ -175,7 +176,7 @@ class StreamResponse(Response):
         return self.length
 
     async def send(self, writer: asyncio.StreamWriter):
-        data = self.content
+        data: Iterable = self.content
         writer.write(self.build())
         for i in data:
             if await conn_drain(writer.drain):
@@ -205,7 +206,7 @@ class HtmlResponse(Response):
         try:
             content = render(template_name, **kwargs)
         except jinja2.exceptions.TemplateNotFound:
-            content = "<h3>500: Template Not Found</h3>"
+            content = "<h3>404: Template Not Found</h3>"
         Response.__init__(self, content, header=header, content_type="text/html; charset=utf-8")
 
 
@@ -285,11 +286,11 @@ class APIHandler(WebHandler):
         if not Response:
             return Response(header=self.header, code=204)
         if isinstance(res, (dict, list, tuple)):
-            return Response(content=dumps(res), header=self.header, code=self.code)
+            return Response(content=dumps(res), header=self.header, code=self.code, content_type="text/json")
         elif isinstance(res, (str, int)):
-            return Response(content=str(res), header=self.header, code=self.code)
+            return Response(content=str(res), header=self.header, code=self.code, content_type="text/plain")
         elif isinstance(res, (bytes, bytearray)):
-            return Response(content=res, header=self.header, code=self.code)
+            return Response(content=res, header=self.header, code=self.code, content_type="text/plain")
 
 
 class WsHandler(BaseHandler):

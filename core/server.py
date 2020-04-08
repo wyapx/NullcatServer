@@ -1,10 +1,12 @@
 import sys
+import time
 import socket
 import asyncio
 from .logger import main_logger
 from .web import HTTPRequest, http404, HttpServerError
 from .config import conf
 from .route import url_match
+from .rewrite import Redirect_Handler
 
 try:
     import uvloop
@@ -21,7 +23,7 @@ def get_local_ip(default=""):
 
 def get_best_loop(debug=False):
     if sys.platform == 'win32':
-        loop = asyncio.SelectorEventLoop()  # Windows IOCP loop
+        loop = asyncio.ProactorEventLoop()  # Windows IOCP loop
     elif sys.platform == 'linux':
         if uvloop:
             loop = uvloop.new_event_loop()  # Linux uvloop (thirty part loop)
@@ -64,7 +66,7 @@ class FullAsyncServer(object):
         self.loop = loop
 
     def millis(self):
-        return int(self.loop.time() * 1000)
+        return int(time.time() * 1000)
 
     async def http1_handler(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, data: tuple) -> bool:
         ip, header = data
@@ -77,6 +79,13 @@ class FullAsyncServer(object):
                 self.log.warning(("Origin data: ", header))
                 return False
             pattern = self.handler.get(req.head.get("Host", "*"), self.handler.get("*", []))
+            if isinstance(pattern, str):
+                req.head["X-Local"] = pattern
+                sender = await Redirect_Handler(req, reader, writer).run()
+                sender.add_header({"Connection": "close"})
+                await sender.send(writer)
+                self.log.info(f"{req.method} {req.head.get('Host')}:{req.path} Redirect")
+                return False
             match = url_match(req.path, pattern)
             obj = None
             if match:

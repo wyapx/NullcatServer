@@ -23,7 +23,7 @@ if conf.get("template", "use_fs_cache"):
     bc_cache = FileSystemBytecodeCache(os.path.join(work_directory, cache_path), "%s.cache")
 else:
     bc_cache = None
-env = Environment(loader=loader, bytecode_cache=bc_cache, enable_async=False)
+env = Environment(loader=loader, bytecode_cache=bc_cache, enable_async=False, autoescape=True)
 
 
 # "--" + self.bound + "\r\n" + http_like_data + "\r\n"

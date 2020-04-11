@@ -3,6 +3,8 @@ type_dict = {
     "html":  "text/html",
     "txt":   "text/plain",
     "py":    "text/plain",
+    "md":    "text/plain; charset=utf-8",
+    "json":  "text/json; charset=utf-8",
     "css":   "text/css",
     "js":    "text/javascript",
     "mp3":   "audio/mpeg",
@@ -21,6 +23,8 @@ type_dict = {
     "xml":   "application/xml",
     "m3u8":  "application/x-mpegURL",
     "exe":   "application/octet-stream",
+    "jar":   "application/octet-stream",
+    "bin":   "application/octet-stream",
     "zip":   "application/x-zip-compressed",
     "gz":    "application/x-gzip"
 }

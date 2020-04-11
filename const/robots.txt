@@ -1,5 +1,0 @@
-# robots config for nullcat
-
-User-agent: *
-
-Disallow: /static/

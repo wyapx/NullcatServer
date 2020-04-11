@@ -101,7 +101,8 @@ class FullAsyncServer(object):
             if res.code != 101:
                 res.add_header({"Content-Length": res.getLen(),
                                 "Connection": req.head.get("Connection", "close").lower(),
-                                "Server": "nginx"})
+                                "Server": "Apache/2.2.23 (Unix)",
+                                "X-Powered-By": "PHP/5.3.12"})
             await res.send(writer)
             if obj:
                 await obj.loop()

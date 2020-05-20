@@ -16,8 +16,6 @@ except ImportError:
     uvloop = None
 
 
-# TODO: Add multiprocess support
-
 async def create_server(client_connected_cb, sock: socket.socket, limit=2 ** 16, loop=None, **kwargs):
     if not loop:
         loop = asyncio.get_event_loop()
@@ -40,7 +38,10 @@ def get_local_ip(default=""):
 
 def get_best_loop(debug=False):
     if sys.platform == 'win32':
-        loop = asyncio.SelectorEventLoop()  # Windows IOCP loop
+        if conf.get("server", "worker_count") == 1:
+            loop = asyncio.ProactorEventLoop()  # Windows IOCP loop
+        else:
+            loop = asyncio.new_event_loop()  # Default loop
     elif sys.platform == 'linux':
         if uvloop:
             loop = uvloop.new_event_loop()  # Linux uvloop (thirty part loop)
@@ -75,7 +76,7 @@ class Manager:
     def run(self, worker_count: int = 1):
         if conf.get("http", "is_enable"):
             http_sock = self.make_socket(conf.get("http", "host"), conf.get("http", "port"))
-            self.logger.info(f"HTTPS is running at {conf.get('https', 'host')}:{conf.get('https', 'port')}")
+            self.logger.info(f"HTTP is running at {conf.get('http', 'host')}:{conf.get('http', 'port')}")
         else:
             http_sock = None
         if conf.get("https", "is_enable"):

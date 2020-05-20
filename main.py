@@ -4,7 +4,7 @@ import argparse
 from core.config import conf
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--develop", action="store_true", help="Run app on development mode.")
+parser.add_argument("--dev", action="store_true", help="Run app on development mode.")
 parser.add_argument("--log", type=int, help="Set log level", default=None)
 parser.add_argument("-d", "--daemon", action="store_true", help="Set daemon")
 parser.add_argument("-r", "--reload", action="store_true", help="restart server(Daemon)")
@@ -17,22 +17,21 @@ if __name__ == "__main__":
                 os.kill(int(f.read()), 15)  # SIGTERM
         else:
             print("no pid file, pass")
-    if args.develop:
+    if args.dev:
         conf.set("server", "daemon", False)
         conf.set("server", "loop_debug", True)
         conf.set("logger", "save_log", False)
         conf.set("http", "rewrite_only", False)
     if args.log is not None:
         conf.set("logger", "level", args.log)
-    from core.route import get_handler
-    from core.server import FullAsyncServer
     if conf.get("server", "daemon") or args.daemon:
         from core.ext import daemon
-
         daemon.daemon("server.pid")
     try:
-        FullAsyncServer(
-            handler=get_handler()
-        ).run()
-    except OSError as e:
-        print(e)
+        from core.route import get_handler
+        from core.server import Manager
+        Manager(get_handler()).run(conf.get("server", "worker_count"))
+    except Exception:
+        from core.logger import main_logger
+        main_logger.logger.exception("Fatal Error:")
+

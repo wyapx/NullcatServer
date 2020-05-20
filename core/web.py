@@ -176,7 +176,7 @@ class StreamResponse(Response):
         return self.length
 
     async def send(self, writer: asyncio.StreamWriter):
-        data: Iterable = self.content
+        data: Iterable[bytes] = self.content
         writer.write(self.build())
         for i in data:
             if await conn_drain(writer.drain):
@@ -185,28 +185,40 @@ class StreamResponse(Response):
 
 
 class JsonResponse(Response):
-    def __init__(self, content, header=None):
+    def __init__(self, content: (dict, list), header=None):
         Response.__init__(self, content=dumps(content), header=header, content_type="application/json")
 
 
 class FileResponse(Response):
-    def __init__(self, path, header=None, content_type="application/octet-stream"):
-        Response.__init__(self, header=header, content_type=content_type)
-        try:
-            self.content = File(os.path.join(work_directory, path))
-        except FileNotFoundError:
-            self.content = b"404 Not found"
+    def __init__(self, path: str, header=None, content_type="application/octet-stream"):
+        if os.path.exists(path):
+            Response.__init__(self, header=header, content_type=content_type)
+            self.content = path
+        else:
+            Response.__init__(self, header=header, content_type="text/html; charset=urf-8", code=404)
 
     def getLen(self) -> int:
-        return len(self.content)
+        if self.content:
+            return os.stat(self.content).st_size
+        else:
+            return len(PAGE_404)
+
+    async def send(self, writer: asyncio.StreamWriter):
+        writer.write(self.build())
+        await writer.drain()
+        if self.content:
+            await asyncio.get_event_loop().sock_sendfile(writer.get_extra_info("socket"), open(self.content, "rb"))
+        else:
+            writer.write(PAGE_404.encode())
+            await writer.drain()
 
 
 class HtmlResponse(Response):
-    def __init__(self, template_name, header=None, **kwargs):
+    def __init__(self, template_name: str, header=None, **kwargs):
         try:
             content = render(template_name, **kwargs)
         except jinja2.exceptions.TemplateNotFound:
-            content = "<h3>404: Template Not Found</h3>"
+            content = PAGE_404
         Response.__init__(self, content, header=header, content_type="text/html; charset=utf-8")
 
 
@@ -341,7 +353,7 @@ class WsHandler(BaseHandler):
             i += 1
         return message_bytes, opcode
 
-    def send(self, message, opcode=OPCODE_TEXT):
+    def send(self, message: (str, bytes, bytearray), opcode=OPCODE_TEXT):
         """
         Important: Fragmented(=continuation) messages are not supported since
         their usage cases are limited - when we don't know the payload length.
@@ -482,7 +494,7 @@ def http400(message=PAGE_400):
     return Response(message, 400)
 
 
-def http301(url):
+def http301(url: str):
     res = Response(code=301)
     res.add_header({"Location": url})
     return res

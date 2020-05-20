@@ -7,6 +7,7 @@ base_config = {
         "request_timeout": 10,
         "daemon": True,
         "loop_debug": False,
+        "worker_count": 0,
         "handler": {"*": ["core.urls"]}
      },
     "http": {
@@ -20,8 +21,12 @@ base_config = {
         "port": 443,
         "is_enable": False,
         "support_ciphers": "ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128",
-        "cert_path": "",
-        "key_path": ""
+        "certificates": {
+#            "servername": {
+#                "cert": "cert_path",
+#                "key": "key_path",
+#            }
+        }
     },
     "database": {
         "database_url": "sqlite:///database.db",
@@ -48,10 +53,10 @@ class JsonConfigParser:
     def __init__(self, config: dict):
         self.config = config
 
-    def _dict_sync(self, source: dict, target: dict):
+    def _dict_sync(self, source: dict, target: dict, depth=0):
         for k, v in source.items():
-            if isinstance(v, dict):
-                self._dict_sync(v, target[k])
+            if isinstance(v, dict) and depth < 2:
+                self._dict_sync(v, target[k], depth+1)
             else:
                 target[k] = v
 

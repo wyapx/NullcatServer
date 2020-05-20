@@ -27,6 +27,22 @@ env = Environment(loader=loader, bytecode_cache=bc_cache, enable_async=False, au
 
 
 # "--" + self.bound + "\r\n" + http_like_data + "\r\n"
+class __PostDataReader:
+    def __init__(self, obj, limit: int, reader: asyncio.StreamReader, header: dict, buf_size=16384):
+        self.obj = obj
+        self.limit = limit
+        self.reader = reader
+        self.header = header
+        self.buf_size = buf_size
+
+    async def _read(self) -> bytes:
+        return await self.reader.read(min(self.buf_size, self.limit))
+
+    async def read(self):
+        data = self._read()
+        if data:
+            pass
+
 class PostDataManager:
     def __init__(self, request, reader: asyncio.StreamReader, buf_size=16384, limit=10485760):  # 10M
         if request.body_length > limit:
@@ -39,7 +55,7 @@ class PostDataManager:
         self.max_size = limit
         self.bound = b""
 
-    async def _read(self):
+    async def _read(self) -> bytes:
         return await self.reader.read(min(self.buf_size, self.request.body_length))
 
     async def multipart(self):
@@ -54,7 +70,7 @@ class PostDataManager:
             cursor = buf.find(self.bound) + len(self.bound)
             if cursor >= len(self.bound):
                 if buf[cursor: cursor + 2] == b"--":
-                    yield buf[:buf.find(self.bound)]  # data body
+                    yield buf[:buf.find(b"\r\n"+self.bound)]  # data body
                     buf = bytearray()
                 elif buf[cursor: cursor + 2] == b"\r\n":
                     head, buf = buf[cursor + 2:].split(b"\r\n\r\n", 1)

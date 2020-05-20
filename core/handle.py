@@ -22,7 +22,7 @@ class StaticHandler(WebHandler):
             else:
                 res = StreamResponse(f, content_type=get_type(path))
                 content_range = request.head.get("Range")
-                if content_range:  # Todo Add: Etag verity
+                if content_range and request.head.get("Etags") == make_etag(f.mtime(), f.size):
                     offset, byte, total = parse_range(content_range, f.size-1)
                     f.set_range(offset, total)
                     res.add_header({"Content-Range": f"bytes {offset}-{byte}/{f.size}"})

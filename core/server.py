@@ -2,6 +2,8 @@ import sys
 import time
 import socket
 import asyncio
+from asyncio import StreamReader, StreamReaderProtocol
+
 from .logger import main_logger
 from .web import HTTPRequest, http404, HttpServerError
 from .config import conf
@@ -14,6 +16,21 @@ except ImportError:
     uvloop = None
 
 
+# TODO: Add multiprocess support
+
+async def create_server(client_connected_cb, sock: socket.socket, limit=2 ** 16, loop=None, **kwargs):
+    if not loop:
+        loop = asyncio.get_event_loop()
+
+    def factory():
+        reader = StreamReader(limit=limit, loop=loop)
+        protocol = StreamReaderProtocol(reader, client_connected_cb,
+                                        loop=loop)
+        return protocol
+
+    return await loop.create_server(factory, sock=sock, **kwargs)
+
+
 def get_local_ip(default=""):
     try:
         return socket.gethostbyname(socket.gethostname())
@@ -23,7 +40,7 @@ def get_local_ip(default=""):
 
 def get_best_loop(debug=False):
     if sys.platform == 'win32':
-        loop = asyncio.ProactorEventLoop()  # Windows IOCP loop
+        loop = asyncio.SelectorEventLoop()  # Windows IOCP loop
     elif sys.platform == 'linux':
         if uvloop:
             loop = uvloop.new_event_loop()  # Linux uvloop (thirty part loop)
@@ -37,30 +54,63 @@ def get_best_loop(debug=False):
     return loop
 
 
-def get_ssl_context(alpn: list, cert_path, key_path):
-    import ssl
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.options |= (ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1)
-    support_ciphers = conf.get("https", "support_ciphers")
-    context.set_ciphers(support_ciphers)
-    context.set_alpn_protocols([*alpn])
-    context.load_cert_chain(cert_path, key_path)
-    return context
+def _run_server(handler, http: socket.socket, https: socket.socket):
+    FullAsyncServer(handler).run(http, https)
+
+
+class Manager:
+    def __init__(self, handler, logger=None, **kwargs):
+        if not logger:
+            logger = main_logger.get_logger()
+        self.logger = logger
+        self.handler = handler
+        self.kwargs = kwargs
+        self.workers = []
+
+    def make_socket(self, host: str, port: int):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind((host, port))
+        return sock
+
+    def run(self, worker_count: int = 1):
+        if conf.get("http", "is_enable"):
+            http_sock = self.make_socket(conf.get("http", "host"), conf.get("http", "port"))
+            self.logger.info(f"HTTPS is running at {conf.get('https', 'host')}:{conf.get('https', 'port')}")
+        else:
+            http_sock = None
+        if conf.get("https", "is_enable"):
+            https_sock = self.make_socket(conf.get("https", "host"), conf.get("https", "port"))
+            self.logger.info(f"HTTPS is running at {conf.get('https', 'host')}:{conf.get('https', 'port')}")
+        else:
+            https_sock = None
+        if worker_count == 0:
+            from multiprocessing import cpu_count
+            worker_count = cpu_count()
+        if worker_count > 1:
+            from multiprocessing import Process
+            for no in range(worker_count - 1):
+                p = Process(target=_run_server, args=(self.handler, http_sock, https_sock))
+                p.name = f"Worker:{no}"
+                p.start()
+                self.workers.append(p)
+        self.logger.info("Press Ctrl+C to stop server")
+        _run_server(self.handler, http_sock, https_sock)
 
 
 class FullAsyncServer(object):
-    log = main_logger.get_logger()
-
-    def __init__(self, handler, block=True, loop=None):
+    def __init__(self, handler, block=True, loop=None, log=None, timeout=10, loop_debug=False, backlog=1024):
         if not loop:
-            loop = get_best_loop(conf.get("server", "loop_debug"))
+            loop = get_best_loop(loop_debug)
+        if not log:
+            log = main_logger.get_logger()
+        self.log = log
         self.block = block
         self.handler = handler
-        self.timeout = conf.get("server", "request_timeout")
+        self.timeout = timeout
+        self.backlog = backlog
         if conf.get("https", "is_enable"):
-            self.ssl = get_ssl_context(["http/1.1"],
-                                       conf.get("https", "cert_path"),
-                                       conf.get("https", "key_path"))
+            from .context import get_ssl_context
+            self.ssl = get_ssl_context(["http/1.1"], conf.get("https", "support_ciphers"))
         else:
             self.ssl = None
         self.loop = loop
@@ -84,7 +134,7 @@ class FullAsyncServer(object):
                 sender = await Redirect_Handler(req, reader, writer).run()
                 sender.add_header({"Connection": "close"})
                 await sender.send(writer)
-                self.log.info(f"{req.method} {req.head.get('Host')}:{req.path} Redirect")
+                self.log.info(f"{req.method} {req.head.get('Host')}:{req.path} {ip} Redirect")
                 return False
             match = url_match(req.path, pattern)
             obj = None
@@ -108,7 +158,7 @@ class FullAsyncServer(object):
                 await obj.loop()
                 req.head["Connection"] = "close"
             self.log.info(f"{req.method} {req.path}:{res.code} {req.head.get('Host')} {ip}"
-                          f"({self.millis()-start_time}ms)")
+                          f"({self.millis() - start_time}ms)")
             if req.head.get("Connection", "close") == "close":
                 return False
             return True
@@ -131,31 +181,25 @@ class FullAsyncServer(object):
     def signal_handler(self, sig):
         self.log.warning(f"Got signal {sig}, stopping...")
         self.loop.stop()
-        
-    def run(self):
+
+    def run(self, http_sock: socket.socket = None, https_sock: socket.socket = None):
         if sys.platform != "win32":
             from signal import SIGTERM, SIGINT
             for sig in (SIGTERM, SIGINT):
                 self.loop.add_signal_handler(sig, self.signal_handler, sig)
-        if conf.get("http", "is_enable"):
+        if conf.get("http", "is_enable") and http_sock:
             if conf.get("http", "rewrite_only") and self.ssl:
                 from .rewrite import server
             else:
                 server = self.server
-            http = asyncio.start_server(server,
-                                        conf.get("http", "host"),
-                                        conf.get("http", "port"))
-            self.loop.run_until_complete(http)
-            self.log.info(f"HTTP is running at {conf.get('http', 'host')}:{conf.get('http', 'port')}")
-        if self.ssl:
-            https = asyncio.start_server(self.server,
-                                         conf.get("https", "host"),
-                                         conf.get("https", "port"),
-                                         ssl=self.ssl)
-            self.loop.run_until_complete(https)
-            self.log.info(f"HTTPS is running at {conf.get('https', 'host')}:{conf.get('https', 'port')}")
+            http = create_server(server, sock=http_sock)
+            self.loop.create_task(http)
+            self.log.debug("HTTP Enable")
+        if self.ssl and https_sock:
+            https = create_server(self.server, sock=https_sock, ssl=self.ssl)
+            self.loop.create_task(https)
+            self.log.debug("HTTPS Enable")
         if self.block:
-            self.log.info("Press Ctrl+C to stop server")
             try:
                 self.loop.run_forever()
             except KeyboardInterrupt:

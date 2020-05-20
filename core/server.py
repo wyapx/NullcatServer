@@ -59,6 +59,14 @@ def _run_server(handler, http: socket.socket, https: socket.socket):
     FullAsyncServer(handler).run(http, https)
 
 
+def make_socket(host: str, port: int, reuse_addr=True):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if sys.platform != "nt" and reuse_addr:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((host, port))
+    return sock
+
+
 class Manager:
     def __init__(self, handler, logger=None, **kwargs):
         if not logger:
@@ -68,19 +76,14 @@ class Manager:
         self.kwargs = kwargs
         self.workers = []
 
-    def make_socket(self, host: str, port: int):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind((host, port))
-        return sock
-
     def run(self, worker_count: int = 1):
         if conf.get("http", "is_enable"):
-            http_sock = self.make_socket(conf.get("http", "host"), conf.get("http", "port"))
+            http_sock = make_socket(conf.get("http", "host"), conf.get("http", "port"))
             self.logger.info(f"HTTP is running at {conf.get('http', 'host')}:{conf.get('http', 'port')}")
         else:
             http_sock = None
         if conf.get("https", "is_enable"):
-            https_sock = self.make_socket(conf.get("https", "host"), conf.get("https", "port"))
+            https_sock = make_socket(conf.get("https", "host"), conf.get("https", "port"))
             self.logger.info(f"HTTPS is running at {conf.get('https', 'host')}:{conf.get('https', 'port')}")
         else:
             https_sock = None

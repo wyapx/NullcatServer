@@ -207,7 +207,13 @@ class FileResponse(Response):
         writer.write(self.build())
         await writer.drain()
         if self.content:
-            await asyncio.get_event_loop().sock_sendfile(writer.get_extra_info("socket"), open(self.content, "rb"))
+            try:
+                await asyncio.get_event_loop().sock_sendfile(writer.get_extra_info("socket"), open(self.content, "rb"))
+            except NotImplementedError:
+                for i in File(self.content):
+                    if await conn_drain(writer.drain):
+                        break
+                    writer.write(i)
         else:
             writer.write(PAGE_404.encode())
             await writer.drain()

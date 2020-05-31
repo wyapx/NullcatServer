@@ -41,7 +41,7 @@ def get_best_loop(debug=False):
         if conf.get("server", "worker_count") == 1:
             loop = asyncio.ProactorEventLoop()  # Windows IOCP loop
         else:
-            loop = asyncio.new_event_loop()  # Default loop
+            loop = asyncio.SelectorEventLoop()  # Selector loop
     elif sys.platform == 'linux':
         if uvloop:
             loop = uvloop.new_event_loop()  # Linux uvloop (thirty part loop)
@@ -56,7 +56,7 @@ def get_best_loop(debug=False):
 
 
 def _run_server(handler, http: socket.socket, https: socket.socket):
-    FullAsyncServer(handler).run(http, https)
+    FullAsyncServer(handler, loop_debug=True).run(http, https)
 
 
 def make_socket(host: str, port: int, reuse_addr=True):
@@ -79,12 +79,12 @@ class Manager:
     def run(self, worker_count: int = 1):
         if conf.get("http", "is_enable"):
             http_sock = make_socket(conf.get("http", "host"), conf.get("http", "port"))
-            self.logger.info(f"HTTP is running at {conf.get('http', 'host')}:{conf.get('http', 'port')}")
+            self.logger.info(f"HTTP is running at {get_local_ip(conf.get('http', 'host'))}:{conf.get('http', 'port')}")
         else:
             http_sock = None
         if conf.get("https", "is_enable"):
             https_sock = make_socket(conf.get("https", "host"), conf.get("https", "port"))
-            self.logger.info(f"HTTPS is running at {conf.get('https', 'host')}:{conf.get('https', 'port')}")
+            self.logger.info(f"HTTPS is running at {get_local_ip(conf.get('https', 'host'))}:{conf.get('https', 'port')}")
         else:
             https_sock = None
         if worker_count == 0:

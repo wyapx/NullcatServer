@@ -8,20 +8,18 @@ from urllib.parse import unquote
 from typing import Iterable
 from .ext.const import *
 from .helpers import timestamp_toCookie, File, ws_return_key, render, Bio
-from .db import DBSession
 try:
     from ujson import dumps
 except ImportError:
     from json import dumps
 
-database = DBSession()
 ws_connection = {"default": []}  # WebSocket连接组储存
 
 
 @asyncio.coroutine
-def conn_drain(drain) -> bool:
+def conn_drain(writer: asyncio.StreamWriter) -> bool:
     try:
-        yield from drain()
+        yield from writer.drain()
     except ConnectionError:
         return True
     yield  # Fix "socket.send() raised exception." issue
@@ -155,12 +153,12 @@ class Response(object):
     async def send(self, writer: asyncio.StreamWriter):
         data = self.build()
         writer.write(data)
-        await conn_drain(writer.drain)
+        await conn_drain(writer)
         if isinstance(self.content, File):
             writer.write(self.content.full_read())
         else:
             writer.write(self.content)
-        await conn_drain(writer.drain)
+        await conn_drain(writer)
 
     def __repr__(self):
         return f"<Response code={self.code} header={self.header}>"
@@ -179,7 +177,7 @@ class StreamResponse(Response):
         data: Iterable[bytes] = self.content
         writer.write(self.build())
         for i in data:
-            if await conn_drain(writer.drain):
+            if await conn_drain(writer):
                 break
             writer.write(i)
 
@@ -211,7 +209,7 @@ class FileResponse(Response):
                 await asyncio.get_event_loop().sock_sendfile(writer.get_extra_info("socket"), open(self.content, "rb"))
             except NotImplementedError:
                 for i in File(self.content):
-                    if await conn_drain(writer.drain):
+                    if await conn_drain(writer):
                         break
                     writer.write(i)
         else:

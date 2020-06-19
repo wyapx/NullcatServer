@@ -1,6 +1,7 @@
 import re
 import importlib
 from .config import conf
+from .web import BaseHandler, Response
 
 
 def path(p_url: str, target: object) -> tuple:
@@ -32,3 +33,10 @@ def url_match(url: str, kv: list) -> (list, None):
         if result:
             return [i[1], result]
     return None
+
+
+def make_response(*args, **kwargs):
+    class Inner(BaseHandler):
+        async def run(self):
+            return Response(*args, **kwargs)
+    return Inner

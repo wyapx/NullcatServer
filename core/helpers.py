@@ -56,37 +56,50 @@ class PostDataManager:
         self.bound = b""
 
     async def _read(self) -> bytes:
-        return await self.reader.read(min(self.buf_size, self.request.body_length))
+        data = await self.reader.read(min(self.buf_size, self.request.body_length))
+        if data:
+            self.request.body_length -= len(data)
+        return data
 
     async def multipart(self):
-        buf = bytearray()
+        buf = bytearray((await self._read()))
+        bs = len(self.bound)
         while True:
-            if not buf:
-                buf = await self._read()
-                if not buf:
-                    return
-                self.request.body_length -= len(buf)
-                continue
-            cursor = buf.find(self.bound) + len(self.bound)
-            if cursor >= len(self.bound):
-                if buf[cursor: cursor + 2] == b"--":
-                    yield buf[:buf.find(b"\r\n"+self.bound)]  # data body
-                    buf = bytearray()
-                elif buf[cursor: cursor + 2] == b"\r\n":
-                    head, buf = buf[cursor + 2:].split(b"\r\n\r\n", 1)
-                    result = {}
-                    for l in head.split(b"\r\n"):
-                        if not l:
-                            break
-                        k, v = l.decode().split(": ", 1)
-                        result[k] = v
-                    yield result
+            if len(buf) < bs + 2:  # 读取大小偏移到结束符
+                buf += await self._read()
+                if buf:
+                    continue
                 else:
-                    buf = buf[buf.find(self.bound):]
-                    yield buf[:buf.find(self.bound)]  # data body
-            else:
+                    break
+            cursor = buf.find(self.bound) + bs  # 搜索bound位置
+            if cursor != -1 + bs:  # 游标搜索到bound
+                if buf.find(self.bound) == 0 or buf[buf.find(self.bound)-2:buf.find(self.bound)] != b"\r\n":  # 到达header
+                    try:
+                        head, buf = buf[cursor + 2:].split(b"\r\n\r\n", 1)
+                    except ValueError:
+                        buf += await self._read()
+                        continue
+                    header = {}
+                    for x in head.decode().split("\r\n"):
+                        if not x:
+                            break
+                        k, v = x.split(": ")
+                        header[k] = v
+                    yield header
+                elif buf[cursor:cursor+2] == b"--":  # 到达结束符
+                    yield buf[:buf.find(b"\r\n" + self.bound + b"--")]
+                    buf.clear()
+                    break
+                else:
+                    if buf.find(self.bound) == -1:  # 后面没有bound
+                        yield buf
+                        buf.clear()
+                    else:  # 后面还有bound
+                        yield buf[:buf.find(self.bound)-2]  # 返回截止到下一个包
+                        buf = buf[buf.find(self.bound):]
+            else:  # 没有搜索到，返回整个数据块
                 yield buf
-                buf = bytearray()
+                buf.clear()
 
     async def urlencode(self):
         buf = bytearray()

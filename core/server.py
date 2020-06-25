@@ -148,7 +148,7 @@ class FullAsyncServer(object):
                     obj = match[0](req, reader, writer)
                     res = await obj.run()
                 except Exception:
-                    self.log.exception("Handler Error:")
+                    self.log.exception("Handler raise an error:")
                     res = HttpServerError()
             else:
                 res = http404()

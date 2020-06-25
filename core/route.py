@@ -35,8 +35,23 @@ def url_match(url: str, kv: list) -> (list, None):
     return None
 
 
+class __ResponseMaker:
+    def __call__(self, request, writer, reader):
+        self.request = request
+        self.writer = writer
+        self.reader = reader
+        return self
+
+    def __init__(self, *arg, **kwarg):
+        self.arg = arg
+        self.kwarg = kwarg
+
+    async def run(self):
+        return Response(*self.arg, **self.kwarg)
+
+    async def loop(self):
+        pass
+
+
 def make_response(*args, **kwargs):
-    class Inner(BaseHandler):
-        async def run(self):
-            return Response(*args, **kwargs)
-    return Inner
+    return __ResponseMaker(*args, **kwargs)

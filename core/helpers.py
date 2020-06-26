@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache
 from .errors import UnknownTypeError, TooBigEntityError
 from .config import conf
 from .ext.const import work_directory, ws_magic_string
+from .misc import safe_open
 
 template_path = conf.get("template", "template_path")
 cache_path = conf.get("template", "cache_path")
@@ -156,7 +157,7 @@ class File(object):
         self.buf_size = buf_size
         self.chunk_size = None
         if os.path.exists(path):
-            self._file = open(path, "rb")
+            self._file = safe_open(path, "rb")
             self.size = os.path.getsize(path)
         else:
             raise FileNotFoundError

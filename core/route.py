@@ -1,7 +1,7 @@
 import re
 import importlib
 from .config import conf
-from .web import BaseHandler, Response
+from .web import Response
 
 
 def path(p_url: str, target: object) -> tuple:

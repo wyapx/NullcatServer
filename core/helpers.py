@@ -157,7 +157,7 @@ class File(object):
         self.buf_size = buf_size
         self.chunk_size = None
         if os.path.exists(path):
-            self._file = safe_open(path, "rb")
+            self._file = safe_open(".", path, "rb")
             self.size = os.path.getsize(path)
         else:
             raise FileNotFoundError

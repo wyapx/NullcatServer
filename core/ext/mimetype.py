@@ -1,6 +1,6 @@
 type_dict = {
-    "htm":   "text/html",
-    "html":  "text/html",
+    "htm":   "text/html; charset=utf-8",
+    "html":  "text/html; charset=utf-8",
     "txt":   "text/plain",
     "py":    "text/plain",
     "md":    "text/plain; charset=utf-8",

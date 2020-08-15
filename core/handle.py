@@ -1,4 +1,5 @@
 import os
+from urllib.parse import unquote
 from .ext.mimetype import get_type
 from .web import http404, StreamResponse, http304, http400, WebHandler
 from .helpers import File, timestamp_toCookie, parse_range, make_etag
@@ -15,7 +16,7 @@ class StaticHandler(WebHandler):
             return http400()
         path = os.path.join(static_path, request.re_args[0])
         if os.path.exists(path):
-            f = File(path)
+            f = File(unquote(path))
             mtime = timestamp_toCookie(f.mtime())
             if request.head.get("If-Modified-Since") == mtime:
                 return http304()

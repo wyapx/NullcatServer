@@ -2,10 +2,12 @@
 import os
 import sys
 
+
 def redirect_io(in_io, out_io):
     sys.stdout = out_io
     sys.stderr = out_io
     sys.stdin = in_io
+
 
 def daemon(pidfile_path=None):
     if hasattr(os, "fork"):

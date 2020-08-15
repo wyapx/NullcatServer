@@ -30,8 +30,8 @@ base_config = {
     },
     "database": {
         "database_url": "sqlite:///database.db",
-        "use_memcached": False,
-        "memcached_url": "",
+        "use_redis": False,
+        "redis_url": "",
         "debug": False
     },
     "logger": {

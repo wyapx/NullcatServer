@@ -3,17 +3,12 @@ import time
 import socket
 import asyncio
 from asyncio import StreamReader, StreamReaderProtocol
-
+from .helpers import task_runner, get_best_loop
 from .logger import main_logger
-from .web import HTTPRequest, http404, HttpServerError
+from .web import HTTPRequest, http404, http500
 from .config import conf
 from .route import url_match
 from .rewrite import Redirect_Handler
-
-try:
-    import uvloop
-except ImportError:
-    uvloop = None
 
 
 async def create_server(client_connected_cb, sock: socket.socket, limit=2 ** 16, loop=None, **kwargs):
@@ -34,25 +29,6 @@ def get_local_ip(default=""):
         return socket.gethostbyname(socket.gethostname())
     except socket.gaierror:
         return default
-
-
-def get_best_loop(debug=False):
-    if sys.platform == 'win32':
-        if conf.get("server", "worker_count") == 1:
-            loop = asyncio.ProactorEventLoop()  # Windows IOCP loop
-        else:
-            loop = asyncio.SelectorEventLoop()  # Selector loop
-    elif sys.platform == 'linux':
-        if uvloop:
-            loop = uvloop.new_event_loop()  # Linux uvloop (thirty part loop)
-        else:
-            loop = asyncio.new_event_loop()  # Linux asyncio default loop
-    else:
-        loop = asyncio.new_event_loop()  # Default loop
-    if debug:
-        loop.set_debug(debug)
-        print(loop)
-    return loop
 
 
 def _run_server(handler, http: socket.socket, https: socket.socket):
@@ -149,7 +125,7 @@ class FullAsyncServer(object):
                     res = await obj.run()
                 except Exception:
                     self.log.exception("Handler raise an error:")
-                    res = HttpServerError()
+                    res = http500()
             else:
                 res = http404()
             if res.code != 101:
@@ -161,7 +137,7 @@ class FullAsyncServer(object):
             if obj:
                 await obj.loop()
                 req.head["Connection"] = "close"
-            self.log.info(f"{req.method} {req.path}:{res.code} {req.head.get('Host')} {ip}"
+            self.log.info(f"{req.method} {req.path}:{res.code} {req.head.get('Host')} {req.real_ip}"
                           f"({self.millis() - start_time}ms)")
             if req.head.get("Connection", "close") == "close":
                 return False
@@ -203,6 +179,9 @@ class FullAsyncServer(object):
             https = create_server(self.server, sock=https_sock, ssl=self.ssl)
             self.loop.create_task(https)
             self.log.debug("HTTPS Enable")
+
+        task_runner.run_all_task(self.loop)
+
         if self.block:
             try:
                 self.loop.run_forever()

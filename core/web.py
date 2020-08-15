@@ -1,6 +1,8 @@
 import re
 import base64
 import asyncio
+import socket
+
 import jinja2
 import struct
 from time import time
@@ -28,8 +30,7 @@ def conn_drain(writer: asyncio.StreamWriter) -> bool:
 
 class HTTPRequest:
     def __init__(self, origin, ip=None):
-        self.body = b""
-        self.remote = ip
+        self.remote_ip = ip
         self.head = {}
         self.re_args = ()
         info, extra = origin.split(b"\r\n", 1)
@@ -39,11 +40,33 @@ class HTTPRequest:
             self.head[k.title()] = v
         self.body_length = int(self.head.get("Content-Length", "0"))
 
+    @staticmethod
+    def __check_ip(raw_data: str):
+        if raw_data.count(".") == 3:  # IPv4
+            try:
+                socket.inet_pton(socket.AF_INET, raw_data)
+            except OSError:
+                return False
+        else:  # IPv6
+            try:
+                socket.inet_pton(socket.AF_INET6, raw_data)
+            except OSError:
+                return False
+        return True
+
+    @property
+    def real_ip(self) -> str:
+        if "X-Forwarded-For" in self.head and self.__check_ip(self.head["X-Forwarded-For"].split(", ")[0]):
+            return self.head["X-Forwarded-For"].split(", ")[0]
+        elif "X-Real-Ip" in self.head and self.__check_ip(self.head["X-Real-Ip"]):
+            return self.head["X-Real-Ip"]
+        return self.remote_ip
+
     @property
     def GET(self) -> dict:
         if self.path.find("?") == -1:
             return {}
-        data = self.path.split("?", 1)[1]
+        data = self.path.split("?", 1)[1].rstrip("&=\n")
         try:
             block = data.split("&")
         except IndexError:
@@ -55,22 +78,7 @@ class HTTPRequest:
                 result[k] = unquote(v)
             return result
         except ValueError:
-            return {}
-
-    @property
-    def POST(self) -> dict:
-        try:
-            block = self.body.split(b"&")
-        except IndexError:
-            block = self.body
-        result = {}
-        try:
-            for i in block:
-                k, v = i.split(b"=", 1)
-                result[k.decode()] = v
             return result
-        except ValueError:
-            return {}
 
     @property
     def Cookie(self) -> dict:
@@ -91,7 +99,7 @@ class HTTPRequest:
 class Response(object):
     """
     警告：不要使用这个类发送过大的请求
-    在慢速连接中可能会导致连接断开
+    在慢速连接中会导致连接提前断开
     """
     def __init__(self, content=None, code=200, header=None, content_type="text/html"):
         if not header:
@@ -205,13 +213,10 @@ class FileResponse(Response):
         writer.write(self.build())
         await writer.drain()
         if self.content:
-            try:
-                await asyncio.get_event_loop().sock_sendfile(writer.get_extra_info("socket"), open(self.content, "rb"))
-            except NotImplementedError:
-                for i in File(self.content):
-                    if await conn_drain(writer):
-                        break
-                    writer.write(i)
+            for i in File(self.content):
+                if await conn_drain(writer):
+                    break
+                writer.write(i)
         else:
             writer.write(PAGE_404.encode())
             await writer.drain()
@@ -357,7 +362,7 @@ class WsHandler(BaseHandler):
             i += 1
         return message_bytes, opcode
 
-    def send(self, message: (str, bytes, bytearray), opcode=OPCODE_TEXT):
+    def write(self, message: (str, bytes, bytearray), opcode=OPCODE_TEXT):
         """
         Important: Fragmented(=continuation) messages are not supported since
         their usage cases are limited - when we don't know the payload length.
@@ -393,15 +398,15 @@ class WsHandler(BaseHandler):
         self.writer.write(header + payload)
 
     def close_connection(self, message="Connection close"):
-        self.send(message, opcode=OPCODE_CLOSE_CONN)
+        self.write(message, opcode=OPCODE_CLOSE_CONN)
         self.keep_alive = False
 
-    async def write(self, data):
-        self.send(data)
+    async def send(self, data):
+        self.write(data)
         await self.writer.drain()
 
-    def write_nowait(self, data):
-        self.send(data)
+    def send_nowait(self, data):
+        self.write(data)
 
     async def loop(self):
         try:
@@ -418,7 +423,7 @@ class WsHandler(BaseHandler):
                     await self.onClose()
                 else:
                     if not opcode:
-                        self.send("", opcode=OPCODE_PING)
+                        self.write("", opcode=OPCODE_PING)
                         continue
                     print("Unknown opcode:", opcode)
                     self.close_connection()
@@ -433,7 +438,7 @@ class WsHandler(BaseHandler):
         pass
 
     async def onPing(self):
-        self.send("", OPCODE_PONG)
+        self.write("", OPCODE_PONG)
 
     async def onClose(self):
         self.close_connection()
@@ -516,5 +521,5 @@ def http405(message=PAGE_405):
     return Response(message, 405)
 
 
-def HttpServerError(message=PAGE_500):
+def http500(message=PAGE_500):
     return Response(message, 500)

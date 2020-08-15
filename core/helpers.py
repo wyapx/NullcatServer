@@ -1,17 +1,16 @@
 import os
 import re
+import sys
 import time
 import asyncio
 from functools import partial
 from hashlib import sha1
 from base64 import b64encode
-from typing import Optional, Tuple
-
+from typing import Optional, Tuple, Callable
 from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache
 from .errors import UnknownTypeError, TooBigEntityError
 from .config import conf
 from .ext.const import work_directory, ws_magic_string
-from .misc import safe_open
 
 template_path = conf.get("template", "template_path")
 cache_path = conf.get("template", "cache_path")
@@ -44,6 +43,23 @@ class __PostDataReader:
         if data:
             pass
 
+
+class __TaskCollector:
+    def __init__(self):
+        self._queue = []
+
+    def add_task(self, task):
+        self._queue.append(task)
+
+    def run_all_task(self, loop: asyncio.AbstractEventLoop):
+        for t in self._queue:
+            if isinstance(t, Callable):
+                loop.create_task(t())
+            else:
+                loop.create_task(t)
+        self._queue.clear()
+
+
 class PostDataManager:
     def __init__(self, request, reader: asyncio.StreamReader, buf_size=16384, limit=10485760):  # 10M
         if request.body_length > limit:
@@ -74,7 +90,8 @@ class PostDataManager:
                     break
             cursor = buf.find(self.bound) + bs  # 搜索bound位置
             if cursor != -1 + bs:  # 游标搜索到bound
-                if buf.find(self.bound) == 0 or buf[buf.find(self.bound)-2:buf.find(self.bound)] != b"\r\n":  # 到达header
+                if buf.find(self.bound) == 0 or buf[
+                                                buf.find(self.bound) - 2:buf.find(self.bound)] != b"\r\n":  # 到达header
                     try:
                         head, buf = buf[cursor + 2:].split(b"\r\n\r\n", 1)
                     except ValueError:
@@ -87,7 +104,7 @@ class PostDataManager:
                         k, v = x.split(": ")
                         header[k] = v
                     yield header
-                elif buf[cursor:cursor+2] == b"--":  # 到达结束符
+                elif buf[cursor:cursor + 2] == b"--":  # 到达结束符
                     yield buf[:buf.find(b"\r\n" + self.bound + b"--")]
                     buf.clear()
                     break
@@ -96,7 +113,7 @@ class PostDataManager:
                         yield buf
                         buf.clear()
                     else:  # 后面还有bound
-                        yield buf[:buf.find(self.bound)-2]  # 返回截止到下一个包
+                        yield buf[:buf.find(self.bound) - 2]  # 返回截止到下一个包
                         buf = buf[buf.find(self.bound):]
             else:  # 没有搜索到，返回整个数据块
                 yield buf
@@ -157,7 +174,7 @@ class File(object):
         self.buf_size = buf_size
         self.chunk_size = None
         if os.path.exists(path):
-            self._file = safe_open(".", path, "rb")
+            self._file = open(path, "rb")
             self.size = os.path.getsize(path)
         else:
             raise FileNotFoundError
@@ -227,12 +244,28 @@ class File(object):
         return self.size
 
 
-def cookie_toTimestamp(cookieTime) -> int:
-    return int(time.mktime(time.strptime(cookieTime, "%a, %d %b %Y %H:%M:%S GMT")))
+def get_best_loop(debug=False):
+    if sys.platform == 'win32':
+        if conf.get("server", "worker_count") == 1:
+            loop = asyncio.ProactorEventLoop()  # Windows IOCP loop
+        else:
+            loop = asyncio.SelectorEventLoop()  # Selector loop
+    elif sys.platform == 'linux':
+        loop = asyncio.new_event_loop()  # Linux asyncio default loop
+    else:
+        loop = asyncio.new_event_loop()  # Default loop
+    if debug:
+        loop.set_debug(debug)
+        print(loop)
+    return loop
 
 
-def timestamp_toCookie(Time=time.time()) -> str:
-    return time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(Time))
+def cookie_toTimestamp(__ct: str) -> int:
+    return int(time.mktime(time.strptime(__ct, "%a, %d %b %Y %H:%M:%S GMT")))
+
+
+def timestamp_toCookie(__ts=time.time()) -> str:
+    return time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(__ts))
 
 
 def parse_range(origin, max_value=0) -> Optional[Tuple[int, int, int]]:
@@ -278,3 +311,6 @@ def interval(delay, func, *args, **kwargs):
 
 def call_later(delay, callback, *args, **kwargs):
     return asyncio.get_event_loop().call_later(delay, partial(run_with_wrapper, callback, *args, **kwargs))
+
+
+task_runner = __TaskCollector()
